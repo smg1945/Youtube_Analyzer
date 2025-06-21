@@ -86,3 +86,38 @@ REQUESTS_PER_SECOND = 10  # 초당 요청 제한
 # - 키워드 검색: ~1,500-3,000 units (필터 조건에 따라 변동)
 # - 할당량 리셋: 매일 자정 UTC 기준
 # ⚠️ 할당량 초과 시 경량 모드를 사용하세요!
+
+# 3. API 키 테스트 코드
+def test_api_key():
+    """API 키 테스트"""
+    try:
+        from googleapiclient.discovery import build
+        
+        # 여기에 실제 API 키 입력
+        API_KEY = "AIzaSyC-dK6T-XXXXX-XXXXXXXXXXXXXXXXXXXXX"  # 실제 API 키로 변경
+        
+        youtube = build('youtube', 'v3', developerKey=API_KEY)
+        
+        # 간단한 API 호출 테스트
+        request = youtube.videos().list(
+            part='snippet',
+            chart='mostPopular',
+            regionCode='KR',
+            maxResults=1
+        )
+        response = request.execute()
+        
+        print("✅ API 키가 올바르게 설정되었습니다!")
+        print(f"테스트 결과: {len(response.get('items', []))}개 영상 조회")
+        return True
+        
+    except Exception as e:
+        print(f"❌ API 키 오류: {e}")
+        if "keyInvalid" in str(e):
+            print("💡 해결방법: API 키가 잘못되었습니다. Google Cloud Console에서 새 API 키를 발급받으세요.")
+        elif "quotaExceeded" in str(e):
+            print("💡 해결방법: API 할당량이 초과되었습니다. 내일 다시 시도하거나 새 프로젝트를 만드세요.")
+        return False
+
+if __name__ == "__main__":
+    test_api_key()

@@ -1,5 +1,5 @@
 """
-엑셀 파일 생성 및 포매팅 관련 함수들
+엑셀 파일 생성 및 포매팅 관련 함수들 (수정된 버전)
 """
 
 import os
@@ -58,6 +58,9 @@ class ExcelGenerator:
                 
                 # 트렌드 키워드 시트 생성
                 self._create_keywords_sheet(writer, video_data_list)
+                
+                # 영상 유형별 분석 시트 생성
+                self._create_video_type_analysis_sheet(writer, video_data_list, analysis_settings)
             
             # 썸네일 이미지 삽입 (openpyxl 사용)
             self._insert_thumbnails(video_data_list)
@@ -68,7 +71,7 @@ class ExcelGenerator:
             print(f"엑셀 파일 생성 오류: {e}")
     
     def _create_dataframe(self, video_data_list):
-        """영상 데이터를 데이터프레임으로 변환"""
+        """영상 데이터를 데이터프레임으로 변환 - 개선된 버전"""
         data = []
         
         for video_data in video_data_list:
@@ -77,12 +80,27 @@ class ExcelGenerator:
             content_details = video_data.get('contentDetails', {})
             analysis = video_data.get('analysis', {})
             
+            # 영상 길이 정보 추가
+            duration_seconds = 0
+            try:
+                from youtube_api import YouTubeAPIClient
+                api_client = YouTubeAPIClient()
+                duration_seconds = api_client.parse_duration(content_details.get('duration', 'PT0S'))
+            except:
+                pass
+            
+            # 영상 유형 상세 정보
+            video_type = analysis.get('video_type', '알수없음')
+            video_type_detail = f"{video_type} ({analysis.get('formatted_duration', '00:00')})"
+            
             row = {
                 '순위': video_data.get('rank', 0),
                 '썸네일': '',  # 이미지는 별도로 삽입
                 '제목': snippet.get('title', ''),
                 '채널명': snippet.get('channelTitle', ''),
-                '영상유형': analysis.get('video_type', ''),
+                '영상유형': video_type,
+                '영상길이': analysis.get('formatted_duration', '00:00'),
+                '영상길이_초': duration_seconds,
                 '조회수': int(statistics.get('viewCount', 0)),
                 '좋아요': int(statistics.get('likeCount', 0)),
                 '댓글수': int(statistics.get('commentCount', 0)),
@@ -90,7 +108,6 @@ class ExcelGenerator:
                 'Outlier등급': analysis.get('outlier_category', '😐 평균'),
                 '채널평균조회수': int(analysis.get('channel_avg_views', 0)),
                 '업로드일시': self._format_datetime(snippet.get('publishedAt', '')),
-                '영상길이': analysis.get('formatted_duration', ''),
                 '카테고리': config.YOUTUBE_CATEGORIES.get(snippet.get('categoryId', ''), '기타'),
                 '핵심키워드': ', '.join(analysis.get('keywords', [])),
                 '댓글감정_긍정': f"{analysis.get('sentiment', {}).get('positive', 0)}%",
@@ -119,9 +136,21 @@ class ExcelGenerator:
         percent_format = workbook.add_format({'num_format': '0.00%'})
         url_format = workbook.add_format({'color': 'blue', 'underline': 1})
         
+        # 영상 유형별 색상 포맷
+        shorts_format = workbook.add_format({'fg_color': '#FFE6E6'})  # 연한 빨강
+        long_format = workbook.add_format({'fg_color': '#E6F3FF'})   # 연한 파랑
+        
         # 헤더 포매팅
         for col_num, value in enumerate(df.columns.values):
             worksheet.write(0, col_num, value, header_format)
+        
+        # 데이터 행 포매팅 (영상 유형별 색상)
+        for row_num in range(1, len(df) + 1):
+            video_type = df.iloc[row_num-1]['영상유형']
+            row_format = shorts_format if video_type == '쇼츠' else long_format if video_type == '롱폼' else None
+            
+            if row_format:
+                worksheet.set_row(row_num, None, row_format)
         
         # 열 너비 조정
         column_widths = {
@@ -130,22 +159,23 @@ class ExcelGenerator:
             'C': 50,  # 제목
             'D': 20,  # 채널명
             'E': 12,  # 영상유형
-            'F': 12,  # 조회수
-            'G': 10,  # 좋아요
-            'H': 10,  # 댓글수
-            'I': 12,  # Outlier점수
-            'J': 15,  # Outlier등급
-            'K': 15,  # 채널평균조회수
-            'L': 20,  # 업로드일시
-            'M': 12,  # 영상길이
-            'N': 15,  # 카테고리
-            'O': 30,  # 핵심키워드
-            'P': 12,  # 댓글감정_긍정
-            'Q': 12,  # 댓글감정_중립
-            'R': 12,  # 댓글감정_부정
-            'S': 12,  # 참여도점수
-            'T': 15,  # 일평균조회수
-            'U': 40   # 영상링크
+            'F': 12,  # 영상길이
+            'G': 10,  # 영상길이_초
+            'H': 12,  # 조회수
+            'I': 10,  # 좋아요
+            'J': 10,  # 댓글수
+            'K': 12,  # Outlier점수
+            'L': 15,  # Outlier등급
+            'M': 15,  # 채널평균조회수
+            'N': 20,  # 업로드일시
+            'O': 15,  # 카테고리
+            'P': 30,  # 핵심키워드
+            'Q': 12,  # 댓글감정_긍정
+            'R': 12,  # 댓글감정_중립
+            'S': 12,  # 댓글감정_부정
+            'T': 12,  # 참여도점수
+            'U': 15,  # 일평균조회수
+            'V': 40   # 영상링크
         }
         
         for col, width in column_widths.items():
@@ -155,16 +185,16 @@ class ExcelGenerator:
         worksheet.set_default_row(config.THUMBNAIL_ROW_HEIGHT)
         
         # 숫자 포맷 적용
-        worksheet.set_column('F:H', 12, number_format)  # 조회수, 좋아요, 댓글수
-        worksheet.set_column('K:K', 15, number_format)  # 채널평균조회수
-        worksheet.set_column('S:T', 12, number_format)  # 참여도점수, 일평균조회수
-        worksheet.set_column('U:U', 40, url_format)     # 영상링크
+        worksheet.set_column('H:J', 12, number_format)  # 조회수, 좋아요, 댓글수
+        worksheet.set_column('M:M', 15, number_format)  # 채널평균조회수
+        worksheet.set_column('T:U', 12, number_format)  # 참여도점수, 일평균조회수
+        worksheet.set_column('V:V', 40, url_format)     # 영상링크
         
         # 고정 창 설정
         worksheet.freeze_panes(1, 0)
     
     def _create_summary_sheet(self, writer, video_data_list, analysis_settings):
-        """요약 정보 시트 생성"""
+        """요약 정보 시트 생성 - 개선된 버전"""
         workbook = writer.book
         summary_sheet = workbook.add_worksheet('분석 요약')
         
@@ -189,7 +219,7 @@ class ExcelGenerator:
         settings_info = [
             ['분석 모드', analysis_settings.get('mode_name', 'Unknown')],
             ['분석 지역', analysis_settings.get('region_name', 'Unknown')],
-            ['영상 유형', analysis_settings.get('video_type', 'Unknown')],
+            ['영상 유형', analysis_settings.get('video_type_name', 'Unknown')],
             ['분석 영상 수', len(video_data_list)],
             ['분석 일시', datetime.now().strftime('%Y-%m-%d %H:%M:%S')]
         ]
@@ -198,7 +228,7 @@ class ExcelGenerator:
         if analysis_settings.get('mode') == 'keyword':
             keyword_info = [
                 ['검색 키워드', f"'{analysis_settings.get('keyword', 'Unknown')}'"],
-                ['검색 기간', analysis_settings.get('period_name', 'Unknown')],
+                ['검색 기간', f"{analysis_settings.get('period_days', 'Unknown')}일"],
                 ['최대 구독자', analysis_settings.get('max_subscribers_name', 'Unknown')],
                 ['최소 조회수', analysis_settings.get('min_views_name', 'Unknown')]
             ]
@@ -214,8 +244,64 @@ class ExcelGenerator:
         
         row += 2
         
-        # 통계 요약
-        summary_sheet.write(row, 0, '📈 통계 요약', title_format)
+        # 영상 유형별 분석
+        summary_sheet.write(row, 0, '🎬 영상 유형별 분석', title_format)
+        row += 2
+        
+        # 영상 유형별 통계 계산
+        video_type_stats = {}
+        for video in video_data_list:
+            video_type = video.get('analysis', {}).get('video_type', '알수없음')
+            if video_type not in video_type_stats:
+                video_type_stats[video_type] = {
+                    'count': 0,
+                    'total_views': 0,
+                    'total_likes': 0,
+                    'avg_outlier': 0
+                }
+            
+            stats = video.get('statistics', {})
+            analysis = video.get('analysis', {})
+            
+            video_type_stats[video_type]['count'] += 1
+            video_type_stats[video_type]['total_views'] += int(stats.get('viewCount', 0))
+            video_type_stats[video_type]['total_likes'] += int(stats.get('likeCount', 0))
+            video_type_stats[video_type]['avg_outlier'] += analysis.get('outlier_score', 1.0)
+        
+        # 평균 계산
+        for video_type in video_type_stats:
+            count = video_type_stats[video_type]['count']
+            if count > 0:
+                video_type_stats[video_type]['avg_outlier'] /= count
+        
+        # 영상 유형별 정보 출력
+        type_info = [
+            ['영상 유형', '개수', '총 조회수', '총 좋아요', '평균 Outlier점수']
+        ]
+        
+        for video_type, stats in video_type_stats.items():
+            type_info.append([
+                video_type,
+                stats['count'],
+                stats['total_views'],
+                stats['total_likes'],
+                round(stats['avg_outlier'], 2)
+            ])
+        
+        for i, info in enumerate(type_info):
+            for j, value in enumerate(info):
+                if i == 0:  # 헤더
+                    summary_sheet.write(row + i, j, value, title_format)
+                else:
+                    if j in [2, 3]:  # 숫자 컬럼
+                        summary_sheet.write(row + i, j, value, number_format)
+                    else:
+                        summary_sheet.write(row + i, j, value, normal_format)
+        
+        row += len(type_info) + 2
+        
+        # 전체 통계 요약
+        summary_sheet.write(row, 0, '📈 전체 통계 요약', title_format)
         row += 2
         
         # 통계 계산
@@ -242,6 +328,77 @@ class ExcelGenerator:
         # 열 너비 조정
         summary_sheet.set_column('A:A', 20)
         summary_sheet.set_column('B:B', 20)
+        summary_sheet.set_column('C:C', 15)
+        summary_sheet.set_column('D:D', 15)
+        summary_sheet.set_column('E:E', 15)
+    
+    def _create_video_type_analysis_sheet(self, writer, video_data_list, analysis_settings):
+        """영상 유형별 상세 분석 시트 생성"""
+        workbook = writer.book
+        
+        # 영상 유형별로 분리
+        shorts_videos = [v for v in video_data_list if v.get('analysis', {}).get('video_type') == '쇼츠']
+        long_videos = [v for v in video_data_list if v.get('analysis', {}).get('video_type') == '롱폼']
+        
+        if shorts_videos:
+            self._create_type_specific_sheet(writer, shorts_videos, '쇼츠 분석', workbook)
+        
+        if long_videos:
+            self._create_type_specific_sheet(writer, long_videos, '롱폼 분석', workbook)
+    
+    def _create_type_specific_sheet(self, writer, videos, sheet_name, workbook):
+        """특정 영상 유형에 대한 상세 분석 시트"""
+        sheet = workbook.add_worksheet(sheet_name)
+        
+        # 포맷 정의
+        header_format = workbook.add_format({
+            'bold': True,
+            'fg_color': '#4F81BD',
+            'color': 'white'
+        })
+        
+        # 기본 통계
+        row = 0
+        sheet.write(row, 0, f'📊 {sheet_name} 상세 분석', header_format)
+        row += 2
+        
+        # 상위 10개 영상
+        sheet.write(row, 0, f'🏆 상위 10개 {sheet_name.split()[0]} 영상', header_format)
+        row += 1
+        
+        headers = ['순위', '제목', '채널', '조회수', 'Outlier점수', '길이']
+        for col, header in enumerate(headers):
+            sheet.write(row, col, header, header_format)
+        row += 1
+        
+        # 상위 10개 데이터
+        top_videos = sorted(videos, key=lambda x: x.get('analysis', {}).get('outlier_score', 0), reverse=True)[:10]
+        
+        for i, video in enumerate(top_videos, 1):
+            snippet = video.get('snippet', {})
+            statistics = video.get('statistics', {})
+            analysis = video.get('analysis', {})
+            
+            data = [
+                i,
+                snippet.get('title', '')[:40] + '...' if len(snippet.get('title', '')) > 40 else snippet.get('title', ''),
+                snippet.get('channelTitle', ''),
+                int(statistics.get('viewCount', 0)),
+                analysis.get('outlier_score', 1.0),
+                analysis.get('formatted_duration', '00:00')
+            ]
+            
+            for col, value in enumerate(data):
+                sheet.write(row, col, value)
+            row += 1
+        
+        # 열 너비 조정
+        sheet.set_column('A:A', 8)
+        sheet.set_column('B:B', 45)
+        sheet.set_column('C:C', 20)
+        sheet.set_column('D:D', 12)
+        sheet.set_column('E:E', 12)
+        sheet.set_column('F:F', 10)
     
     def _create_keywords_sheet(self, writer, video_data_list):
         """트렌드 키워드 시트 생성"""

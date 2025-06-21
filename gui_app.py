@@ -1,5 +1,5 @@
 """
-YouTube 트렌드 분석기 GUI (tkinter)
+YouTube 트렌드 분석기 GUI (완전한 버전)
 """
 
 import tkinter as tk
@@ -9,6 +9,8 @@ import os
 import sys
 from datetime import datetime
 import webbrowser
+import requests
+import re
 
 # 프로젝트 모듈들
 import config
@@ -20,8 +22,8 @@ from transcript_downloader import TranscriptDownloader
 class YouTubeTrendAnalyzerGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("🎬 YouTube 트렌드 분석기 v2.0")
-        self.root.geometry("900x700")
+        self.root.title("🎬 YouTube 트렌드 분석기 v2.1")
+        self.root.geometry("950x750")
         self.root.configure(bg='#f0f0f0')
         
         # 분석 관련 객체들
@@ -45,8 +47,9 @@ class YouTubeTrendAnalyzerGUI:
         if not config.DEVELOPER_KEY or config.DEVELOPER_KEY == "YOUR_YOUTUBE_API_KEY_HERE":
             messagebox.showerror(
                 "API 키 오류", 
-                "YouTube API 키가 설정되지 않았습니다!\\n\\n"
-                "config.py 파일에서 DEVELOPER_KEY를 설정해주세요."
+                "YouTube API 키가 설정되지 않았습니다!\n\n"
+                "config.py 파일에서 DEVELOPER_KEY를 설정해주세요.\n\n"
+                "Google Cloud Console에서 YouTube Data API v3 키를 발급받으세요."
             )
     
     def create_widgets(self):
@@ -58,7 +61,7 @@ class YouTubeTrendAnalyzerGUI:
         # 제목
         title_label = tk.Label(
             main_frame, 
-            text="🎬 YouTube 트렌드 분석기",
+            text="🎬 YouTube 트렌드 분석기 v2.1",
             font=("Arial", 18, "bold"),
             bg='#f0f0f0',
             fg='#2c3e50'
@@ -105,49 +108,80 @@ class YouTubeTrendAnalyzerGUI:
         ttk.Radiobutton(region_frame, text="한국", variable=self.region_var, value="KR").pack(side=tk.LEFT)
         ttk.Radiobutton(region_frame, text="글로벌", variable=self.region_var, value="US").pack(side=tk.LEFT)
         
-        # 영상 유형
+        # 영상 유형 (중요: 수정된 부분)
         ttk.Label(settings_frame, text="영상 유형:").grid(row=5, column=0, sticky=tk.W, pady=(10, 5))
         self.video_type_var = tk.StringVar(value="all")
-        ttk.Radiobutton(settings_frame, text="전체", variable=self.video_type_var, value="all").grid(row=6, column=0, sticky=tk.W)
-        ttk.Radiobutton(settings_frame, text="롱폼", variable=self.video_type_var, value="long").grid(row=7, column=0, sticky=tk.W)
-        ttk.Radiobutton(settings_frame, text="쇼츠", variable=self.video_type_var, value="shorts").grid(row=8, column=0, sticky=tk.W)
+        
+        video_type_frame = ttk.Frame(settings_frame)
+        video_type_frame.grid(row=6, column=0, columnspan=2, sticky=(tk.W, tk.E))
+        
+        ttk.Radiobutton(video_type_frame, text="전체", variable=self.video_type_var, 
+                       value="all", command=self.on_video_type_change).grid(row=0, column=0, sticky=tk.W)
+        ttk.Radiobutton(video_type_frame, text="롱폼 (>60초)", variable=self.video_type_var, 
+                       value="long", command=self.on_video_type_change).grid(row=0, column=1, sticky=tk.W, padx=(10, 0))
+        ttk.Radiobutton(video_type_frame, text="쇼츠 (≤60초)", variable=self.video_type_var, 
+                       value="shorts", command=self.on_video_type_change).grid(row=0, column=2, sticky=tk.W, padx=(10, 0))
+        
+        # 영상 유형 안내 라벨
+        self.video_type_info = tk.Label(
+            settings_frame, 
+            text="💡 롱폼: 60초 초과 영상, 쇼츠: 60초 이하 영상",
+            font=("Arial", 8),
+            fg="gray",
+            bg='#f0f0f0'
+        )
+        self.video_type_info.grid(row=7, column=0, columnspan=2, sticky=tk.W, pady=(2, 0))
         
         # 키워드 검색 전용 설정
         self.keyword_frame = ttk.LabelFrame(settings_frame, text="🔍 키워드 검색 설정")
-        self.keyword_frame.grid(row=9, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 0))
+        self.keyword_frame.grid(row=8, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 0))
         
         # 키워드 입력
         ttk.Label(self.keyword_frame, text="검색 키워드:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.keyword_entry = ttk.Entry(self.keyword_frame, width=30)
         self.keyword_entry.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
+        self.keyword_entry.bind('<KeyRelease>', self.on_keyword_change)  # 실시간 유효성 검사
+        
+        # 키워드 안내
+        self.keyword_info = tk.Label(
+            self.keyword_frame,
+            text="예: 건강, 다이어트, 요리, BTS 등",
+            font=("Arial", 8),
+            fg="gray",
+            bg='#f0f0f0'
+        )
+        self.keyword_info.grid(row=2, column=0, sticky=tk.W)
         
         # 검색 기간
-        ttk.Label(self.keyword_frame, text="검색 기간:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Label(self.keyword_frame, text="검색 기간:").grid(row=3, column=0, sticky=tk.W, pady=(10, 5))
         self.period_var = tk.StringVar(value="30")
         period_frame = ttk.Frame(self.keyword_frame)
-        period_frame.grid(row=3, column=0, sticky=(tk.W, tk.E))
-        ttk.Radiobutton(period_frame, text="이번 주", variable=self.period_var, value="7").pack(side=tk.LEFT)
-        ttk.Radiobutton(period_frame, text="이번 달", variable=self.period_var, value="30").pack(side=tk.LEFT)
+        period_frame.grid(row=4, column=0, sticky=(tk.W, tk.E))
+        ttk.Radiobutton(period_frame, text="7일", variable=self.period_var, value="7").pack(side=tk.LEFT)
+        ttk.Radiobutton(period_frame, text="30일", variable=self.period_var, value="30").pack(side=tk.LEFT, padx=(10, 0))
+        ttk.Radiobutton(period_frame, text="90일", variable=self.period_var, value="90").pack(side=tk.LEFT, padx=(10, 0))
         
         # 필터 설정
-        ttk.Label(self.keyword_frame, text="최대 구독자 수:").grid(row=4, column=0, sticky=tk.W, pady=(10, 5))
+        ttk.Label(self.keyword_frame, text="최대 구독자 수:").grid(row=5, column=0, sticky=tk.W, pady=(10, 5))
         self.max_subscribers_var = tk.StringVar(value="none")
         sub_frame = ttk.Frame(self.keyword_frame)
-        sub_frame.grid(row=5, column=0, sticky=(tk.W, tk.E))
-        ttk.Radiobutton(sub_frame, text="100만", variable=self.max_subscribers_var, value="1000000").pack(side=tk.LEFT)
-        ttk.Radiobutton(sub_frame, text="10만", variable=self.max_subscribers_var, value="100000").pack(side=tk.LEFT)
+        sub_frame.grid(row=6, column=0, sticky=(tk.W, tk.E))
+        ttk.Radiobutton(sub_frame, text="제한없음", variable=self.max_subscribers_var, value="none").pack(side=tk.LEFT)
+        ttk.Radiobutton(sub_frame, text="100만", variable=self.max_subscribers_var, value="1000000").pack(side=tk.LEFT, padx=(5, 0))
+        ttk.Radiobutton(sub_frame, text="10만", variable=self.max_subscribers_var, value="100000").pack(side=tk.LEFT, padx=(5, 0))
         
-        ttk.Label(self.keyword_frame, text="최소 조회수:").grid(row=6, column=0, sticky=tk.W, pady=(10, 5))
+        ttk.Label(self.keyword_frame, text="최소 조회수:").grid(row=7, column=0, sticky=tk.W, pady=(10, 5))
         self.min_views_var = tk.StringVar(value="none")
         views_frame = ttk.Frame(self.keyword_frame)
-        views_frame.grid(row=7, column=0, sticky=(tk.W, tk.E))
-        ttk.Radiobutton(views_frame, text="1천", variable=self.min_views_var, value="1000").pack(side=tk.LEFT)
-        ttk.Radiobutton(views_frame, text="1만", variable=self.min_views_var, value="10000").pack(side=tk.LEFT)
-        ttk.Radiobutton(views_frame, text="10만", variable=self.min_views_var, value="100000").pack(side=tk.LEFT)
+        views_frame.grid(row=8, column=0, sticky=(tk.W, tk.E))
+        ttk.Radiobutton(views_frame, text="제한없음", variable=self.min_views_var, value="none").pack(side=tk.LEFT)
+        ttk.Radiobutton(views_frame, text="1천", variable=self.min_views_var, value="1000").pack(side=tk.LEFT, padx=(5, 0))
+        ttk.Radiobutton(views_frame, text="1만", variable=self.min_views_var, value="10000").pack(side=tk.LEFT, padx=(5, 0))
+        ttk.Radiobutton(views_frame, text="10만", variable=self.min_views_var, value="100000").pack(side=tk.LEFT, padx=(5, 0))
         
         # 카테고리 (트렌딩 모드 전용)
         self.category_frame = ttk.LabelFrame(settings_frame, text="📂 카테고리")
-        self.category_frame.grid(row=10, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 0))
+        self.category_frame.grid(row=9, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 0))
         
         ttk.Label(self.category_frame, text="카테고리:").grid(row=0, column=0, sticky=tk.W, pady=5)
         self.category_var = tk.StringVar(value="all")
@@ -158,9 +192,9 @@ class YouTubeTrendAnalyzerGUI:
         
         # API 절약 모드
         self.api_frame = ttk.LabelFrame(settings_frame, text="⚡ API 사용량 절약")
-        self.api_frame.grid(row=11, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 0))
+        self.api_frame.grid(row=10, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(10, 0))
         
-        self.light_mode_var = tk.BooleanVar(value=False)
+        self.light_mode_var = tk.BooleanVar(value=True)  # 기본값을 True로 변경
         ttk.Checkbutton(
             self.api_frame, 
             text="경량 모드 (Outlier Score 간소화로 API 사용량 90% 절약)", 
@@ -169,9 +203,10 @@ class YouTubeTrendAnalyzerGUI:
         
         ttk.Label(
             self.api_frame, 
-            text="※ 경량 모드에서는 정확한 Outlier Score 대신 간단한 지표를 사용합니다",
+            text="💡 첫 실행시에는 경량 모드를 권장합니다",
             font=("Arial", 8),
-            foreground="gray"
+            foreground="blue",
+            background='#f0f0f0'
         ).grid(row=1, column=0, sticky=tk.W)
         
         # 초기 상태 설정
@@ -182,6 +217,35 @@ class YouTubeTrendAnalyzerGUI:
         self.keyword_frame.columnconfigure(0, weight=1)
         self.category_frame.columnconfigure(0, weight=1)
         self.api_frame.columnconfigure(0, weight=1)
+    
+    def on_video_type_change(self):
+        """영상 유형 변경시 호출"""
+        video_type = self.video_type_var.get()
+        if video_type == "shorts":
+            self.video_type_info.config(
+                text="💡 쇼츠: 60초 이하 영상 (일반적으로 세로형)",
+                fg="purple"
+            )
+        elif video_type == "long":
+            self.video_type_info.config(
+                text="💡 롱폼: 60초 초과 영상 (일반적으로 가로형)",
+                fg="blue"
+            )
+        else:
+            self.video_type_info.config(
+                text="💡 전체: 모든 유형의 영상 포함",
+                fg="gray"
+            )
+    
+    def on_keyword_change(self, event):
+        """키워드 변경시 실시간 유효성 검사"""
+        keyword = self.keyword_entry.get().strip()
+        if len(keyword) > 50:
+            self.keyword_info.config(text="⚠️ 키워드가 너무 깁니다 (50자 이하 권장)", fg="red")
+        elif len(keyword) == 0:
+            self.keyword_info.config(text="예: 건강, 다이어트, 요리, BTS 등", fg="gray")
+        else:
+            self.keyword_info.config(text="✅ 유효한 키워드", fg="green")
     
     def create_results_panel(self, parent):
         """결과 패널 생성"""
@@ -199,16 +263,20 @@ class YouTubeTrendAnalyzerGUI:
         self.progress_bar.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
         
         # 결과 트리뷰
-        columns = ("순위", "제목", "채널", "조회수", "Outlier점수", "영상유형")
+        columns = ("순위", "제목", "채널", "조회수", "Outlier점수", "영상유형", "길이")
         self.results_tree = ttk.Treeview(results_frame, columns=columns, show="headings", height=15)
         
         # 컬럼 헤더 설정
         for col in columns:
             self.results_tree.heading(col, text=col)
             if col == "제목":
-                self.results_tree.column(col, width=300)
+                self.results_tree.column(col, width=280)
             elif col == "채널":
-                self.results_tree.column(col, width=150)
+                self.results_tree.column(col, width=120)
+            elif col == "영상유형":
+                self.results_tree.column(col, width=80)
+            elif col == "길이":
+                self.results_tree.column(col, width=80)
             else:
                 self.results_tree.column(col, width=80)
         
@@ -268,6 +336,14 @@ class YouTubeTrendAnalyzerGUI:
         )
         self.thumbnail_button.pack(side=tk.LEFT, padx=(0, 10))
         
+        # 설정 테스트 버튼
+        test_button = ttk.Button(
+            button_frame, 
+            text="🔧 설정 테스트", 
+            command=self.test_current_settings
+        )
+        test_button.pack(side=tk.LEFT, padx=(0, 10))
+        
         # 정보 버튼
         info_button = ttk.Button(
             button_frame, 
@@ -275,6 +351,75 @@ class YouTubeTrendAnalyzerGUI:
             command=self.show_info
         )
         info_button.pack(side=tk.RIGHT)
+    
+    def test_current_settings(self):
+        """현재 설정으로 간단한 테스트"""
+        settings = self.prepare_settings()
+        if not settings:
+            return
+        
+        # 테스트 결과 창
+        test_window = tk.Toplevel(self.root)
+        test_window.title("🔧 설정 테스트 결과")
+        test_window.geometry("600x400")
+        
+        text_area = scrolledtext.ScrolledText(test_window, wrap=tk.WORD, width=70, height=20)
+        text_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # 설정 정보 출력
+        text_area.insert(tk.END, "🔧 현재 설정 테스트\n")
+        text_area.insert(tk.END, "=" * 50 + "\n\n")
+        
+        text_area.insert(tk.END, f"분석 모드: {settings['mode_name']}\n")
+        text_area.insert(tk.END, f"지역: {settings['region_name']}\n")
+        text_area.insert(tk.END, f"영상 유형: {settings['video_type_name']}\n")
+        
+        if settings['mode'] == 'keyword':
+            text_area.insert(tk.END, f"키워드: '{settings['keyword']}'\n")
+            text_area.insert(tk.END, f"검색 기간: {settings['period_days']}일\n")
+            text_area.insert(tk.END, f"최대 구독자: {settings['max_subscribers_name']}\n")
+            text_area.insert(tk.END, f"최소 조회수: {settings['min_views_name']}\n")
+        else:
+            text_area.insert(tk.END, f"카테고리: {settings['category_name']}\n")
+        
+        text_area.insert(tk.END, f"경량 모드: {'활성화' if settings['light_mode'] else '비활성화'}\n\n")
+        
+        # 설정 분석
+        text_area.insert(tk.END, "📊 설정 분석 결과:\n")
+        text_area.insert(tk.END, "-" * 30 + "\n")
+        
+        if settings['mode'] == 'keyword':
+            # 키워드 분석
+            keyword = settings['keyword']
+            if len(keyword) < 2:
+                text_area.insert(tk.END, "⚠️ 키워드가 너무 짧습니다. (2자 이상 권장)\n")
+            elif len(keyword) > 20:
+                text_area.insert(tk.END, "⚠️ 키워드가 너무 깁니다. (20자 이하 권장)\n")
+            else:
+                text_area.insert(tk.END, "✅ 키워드 길이 적절\n")
+            
+            # 필터 분석
+            if settings.get('max_subscribers') and settings.get('min_views'):
+                if settings['max_subscribers'] < 100000 and settings['min_views'] > 50000:
+                    text_area.insert(tk.END, "⚠️ 필터가 너무 엄격합니다. 결과가 없을 수 있습니다.\n")
+                else:
+                    text_area.insert(tk.END, "✅ 필터 설정 적절\n")
+            
+            # 검색 기간 분석
+            if settings['period_days'] < 7:
+                text_area.insert(tk.END, "⚠️ 검색 기간이 짧습니다. 30일 이상 권장\n")
+            else:
+                text_area.insert(tk.END, "✅ 검색 기간 적절\n")
+        
+        text_area.insert(tk.END, "\n💡 권장사항:\n")
+        if not settings['light_mode']:
+            text_area.insert(tk.END, "- 첫 실행시에는 경량 모드 활성화 권장\n")
+        if settings['mode'] == 'keyword' and settings.get('min_views', 0) > 50000:
+            text_area.insert(tk.END, "- 최소 조회수를 낮춰보세요 (1만 이하)\n")
+        if settings['mode'] == 'keyword' and settings.get('max_subscribers', float('inf')) < 500000:
+            text_area.insert(tk.END, "- 최대 구독자를 늘려보세요 (100만 이상)\n")
+        
+        text_area.config(state=tk.DISABLED)
     
     def create_status_bar(self, parent):
         """상태바 생성"""
@@ -343,11 +488,15 @@ class YouTubeTrendAnalyzerGUI:
         analysis_thread.start()
     
     def validate_settings(self):
-        """설정 검증"""
+        """설정 검증 - 개선된 버전"""
         if self.mode_var.get() == "keyword":
             keyword = self.keyword_entry.get().strip()
             if not keyword:
                 messagebox.showerror("입력 오류", "키워드를 입력해주세요.")
+                return False
+            
+            if len(keyword) > 100:
+                messagebox.showerror("입력 오류", "키워드가 너무 깁니다. (100자 이하)")
                 return False
         
         if not config.DEVELOPER_KEY or config.DEVELOPER_KEY == "YOUR_YOUTUBE_API_KEY_HERE":
@@ -356,11 +505,65 @@ class YouTubeTrendAnalyzerGUI:
         
         return True
     
+    def prepare_settings(self):
+        """GUI 설정을 분석용 설정으로 변환 - 개선된 버전"""
+        try:
+            settings = {
+                'mode': self.mode_var.get(),
+                'region': self.region_var.get(),
+                'video_type': self.video_type_var.get(),  # 중요: 이 부분이 누락되어 있었음
+                'language': 'ko' if self.region_var.get() == 'KR' else 'en',
+                'light_mode': self.light_mode_var.get()
+            }
+            
+            # 모드별 설정 이름
+            settings['mode_name'] = "키워드 검색" if settings['mode'] == "keyword" else "트렌딩 분석"
+            settings['region_name'] = "한국" if settings['region'] == "KR" else "글로벌"
+            
+            # 영상 유형 이름
+            video_type_names = {
+                "all": "전체",
+                "long": "롱폼",
+                "shorts": "쇼츠"
+            }
+            settings['video_type_name'] = video_type_names.get(settings['video_type'], "전체")
+            
+            if settings['mode'] == "keyword":
+                settings.update({
+                    'keyword': self.keyword_entry.get().strip(),
+                    'period_days': int(self.period_var.get()),
+                    'max_subscribers': None if self.max_subscribers_var.get() == "none" else int(self.max_subscribers_var.get()),
+                    'min_views': None if self.min_views_var.get() == "none" else int(self.min_views_var.get())
+                })
+                
+                # 설정 이름
+                settings['max_subscribers_name'] = "제한 없음" if settings['max_subscribers'] is None else f"{settings['max_subscribers']:,} 이하"
+                settings['min_views_name'] = "제한 없음" if settings['min_views'] is None else f"{settings['min_views']:,} 이상"
+            else:
+                category_text = self.category_var.get()
+                category_id = "all"
+                for k, v in config.YOUTUBE_CATEGORIES.items():
+                    if v in category_text:
+                        category_id = k
+                        break
+                settings['category'] = category_id
+                settings['category_name'] = config.YOUTUBE_CATEGORIES.get(category_id, "전체")
+            
+            return settings
+            
+        except Exception as e:
+            messagebox.showerror("설정 오류", f"설정 준비 중 오류: {e}")
+            return None
+    
     def run_analysis(self):
         """실제 분석 실행 (별도 스레드)"""
         try:
             # 설정 준비
             settings = self.prepare_settings()
+            if not settings:
+                self.root.after(0, lambda: self.analysis_failed("설정 준비 실패"))
+                return
+                
             self.current_settings = settings
             
             # 분석 객체 초기화
@@ -393,36 +596,8 @@ class YouTubeTrendAnalyzerGUI:
             error_msg = f"분석 중 오류 발생: {str(e)}"
             self.root.after(0, lambda: self.analysis_failed(error_msg))
     
-    def prepare_settings(self):
-        """GUI 설정을 분석용 설정으로 변환"""
-        settings = {
-            'mode': self.mode_var.get(),
-            'region': self.region_var.get(),
-            'video_type': self.video_type_var.get(),
-            'language': 'ko' if self.region_var.get() == 'KR' else 'en',
-            'light_mode': self.light_mode_var.get()
-        }
-        
-        if settings['mode'] == "keyword":
-            settings.update({
-                'keyword': self.keyword_entry.get().strip(),
-                'period_days': int(self.period_var.get()),
-                'max_subscribers': None if self.max_subscribers_var.get() == "none" else int(self.max_subscribers_var.get()),
-                'min_views': None if self.min_views_var.get() == "none" else int(self.min_views_var.get())
-            })
-        else:
-            category_text = self.category_var.get()
-            category_id = "all"
-            for k, v in config.YOUTUBE_CATEGORIES.items():
-                if v in category_text:
-                    category_id = k
-                    break
-            settings['category'] = category_id
-        
-        return settings
-    
     def collect_video_data(self, settings):
-        """영상 데이터 수집"""
+        """영상 데이터 수집 - 개선된 버전"""
         try:
             # API 사용량 확인
             quota_status = self.api_client.get_quota_status()
@@ -436,7 +611,8 @@ class YouTubeTrendAnalyzerGUI:
                     max_results=200,
                     max_subscriber_count=settings.get('max_subscribers'),
                     min_view_count=settings.get('min_views'),
-                    period_days=settings.get('period_days', 30)
+                    period_days=settings.get('period_days', 30),
+                    video_type=settings['video_type']  # 중요: video_type 전달
                 )
             else:
                 if settings['video_type'] == "shorts":
@@ -452,20 +628,19 @@ class YouTubeTrendAnalyzerGUI:
                         max_results=200
                     )
                     
-                    if settings['video_type'] == "long":
+                    if settings['video_type'] != "all":
                         videos = self.api_client.filter_videos_by_type(videos, settings['video_type'])
                     
                     return videos
         except Exception as e:
             if "quotaExceeded" in str(e) or "할당량" in str(e):
-                # API 할당량 관련 오류
                 self.root.after(0, lambda: messagebox.showerror(
                     "API 할당량 초과", 
-                    f"YouTube API 할당량을 초과했습니다.\\n\\n"
-                    f"현재 사용량: {self.api_client.get_quota_usage()}/10,000\\n\\n"
-                    f"해결 방법:\\n"
-                    f"1. 내일 다시 시도해주세요 (할당량은 매일 자정 UTC 기준으로 리셋)\\n"
-                    f"2. 경량 모드를 사용해서 API 사용량을 절약하세요\\n"
+                    f"YouTube API 할당량을 초과했습니다.\n\n"
+                    f"현재 사용량: {self.api_client.get_quota_usage() if hasattr(self, 'api_client') and self.api_client else 'Unknown'}/10,000\n\n"
+                    f"해결 방법:\n"
+                    f"1. 내일 다시 시도해주세요 (할당량은 매일 자정 UTC 기준으로 리셋)\n"
+                    f"2. 경량 모드를 사용해서 API 사용량을 절약하세요\n"
                     f"3. 더 적은 수의 영상을 분석해보세요"
                 ))
             raise e
@@ -583,14 +758,15 @@ class YouTubeTrendAnalyzerGUI:
             statistics = video['statistics']
             analysis = video['analysis']
             
-            title = snippet['title'][:50] + "..." if len(snippet['title']) > 50 else snippet['title']
-            channel = snippet['channelTitle'][:20] + "..." if len(snippet['channelTitle']) > 20 else snippet['channelTitle']
+            title = snippet['title'][:45] + "..." if len(snippet['title']) > 45 else snippet['title']
+            channel = snippet['channelTitle'][:15] + "..." if len(snippet['channelTitle']) > 15 else snippet['channelTitle']
             views = f"{int(statistics.get('viewCount', 0)):,}"
             outlier_score = f"{analysis['outlier_score']:.1f}x"
             video_type = analysis['video_type']
+            duration = analysis['formatted_duration']
             
             self.results_tree.insert("", tk.END, values=(
-                video['rank'], title, channel, views, outlier_score, video_type
+                video['rank'], title, channel, views, outlier_score, video_type, duration
             ))
         
         # 버튼 활성화
@@ -600,7 +776,8 @@ class YouTubeTrendAnalyzerGUI:
         self.thumbnail_button.config(state=tk.NORMAL)
         
         # 완료 메시지
-        messagebox.showinfo("분석 완료", f"총 {len(self.analyzed_videos)}개 영상 분석이 완료되었습니다!")
+        video_type_msg = f" ({self.current_settings.get('video_type_name', '전체')} 유형)"
+        messagebox.showinfo("분석 완료", f"총 {len(self.analyzed_videos)}개 영상 분석이 완료되었습니다!{video_type_msg}")
     
     def analysis_failed(self, error_msg):
         """분석 실패 처리"""
@@ -632,10 +809,10 @@ class YouTubeTrendAnalyzerGUI:
                 self.excel_generator = ExcelGenerator(filename)
                 self.excel_generator.create_excel_file(self.analyzed_videos, self.current_settings)
                 
-                messagebox.showinfo("저장 완료", f"엑셀 파일이 저장되었습니다:\\n{filename}")
+                messagebox.showinfo("저장 완료", f"엑셀 파일이 저장되었습니다:\n{filename}")
                 
         except Exception as e:
-            messagebox.showerror("저장 실패", f"엑셀 저장 중 오류 발생:\\n{str(e)}")
+            messagebox.showerror("저장 실패", f"엑셀 저장 중 오류 발생:\n{str(e)}")
     
     def download_thumbnails(self):
         """선택된 영상들의 썸네일 다운로드"""
@@ -663,23 +840,15 @@ class YouTubeTrendAnalyzerGUI:
             # 채널 분석 창 열기
             ChannelAnalysisWindow(self.root, selected_video, self.api_client, self.transcript_downloader)
     
-    def download_thumbnails(self):
-        """선택된 영상들의 썸네일 다운로드"""
-        if not self.analyzed_videos:
-            messagebox.showwarning("다운로드 오류", "다운로드할 영상이 없습니다.")
-            return
-        
-        # 썸네일 다운로드 옵션 창 열기
-        ThumbnailDownloadWindow(self.root, self.analyzed_videos, self.api_client)
-    
     def show_info(self):
         """정보 창 표시"""
         info_text = f"""
-🎬 YouTube 트렌드 분석기 v2.0
+🎬 YouTube 트렌드 분석기 v2.1
 
 📊 주요 기능:
 • 실시간 트렌딩 영상 분석
 • 키워드 기반 영상 검색
+• 영상 유형별 분석 (전체/롱폼/쇼츠)
 • Outlier Score 기반 성과 분석
 • 채널별 대본 다운로드
 • 음성 인식 자막 생성
@@ -693,284 +862,21 @@ class YouTubeTrendAnalyzerGUI:
 
 ⚠️ 주의사항:
 • YouTube API 키가 필요합니다
-• 음성 인식은 많은 시간이 소요될 수 있습니다
-• API 일일 할당량을 확인해주세요
+• 첫 실행시에는 경량 모드 권장
+• API 일일 할당량을 확인해주세요 (10,000 단위)
+
+💡 최신 개선사항:
+• 영상 유형 필터링 정확도 향상
+• 롱폼/쇼츠 구분 개선 (60초 기준)
+• 설정 검증 및 테스트 기능 추가
+• API 사용량 최적화
 
 👨‍💻 개발: YouTube 트렌드 분석팀
-📅 버전: 2.0 ({datetime.now().year})
+📅 버전: 2.1 ({datetime.now().year})
         """
         
         messagebox.showinfo("프로그램 정보", info_text)
 
-class ChannelAnalysisWindow:
-    def __init__(self, parent, selected_video, api_client, transcript_downloader):
-        self.parent = parent
-        self.selected_video = selected_video
-        self.api_client = api_client
-        self.transcript_downloader = transcript_downloader
-        
-        # 새 창 생성
-        self.window = tk.Toplevel(parent)
-        self.window.title(f"📺 채널 분석 - {selected_video['snippet']['channelTitle']}")
-        self.window.geometry("800x600")
-        self.window.configure(bg='#f0f0f0')
-        
-        # 채널 영상 목록
-        self.channel_videos = []
-        self.selected_videos = []
-        
-        self.create_widgets()
-        self.load_channel_videos()
-    
-    def create_widgets(self):
-        """위젯 생성"""
-        main_frame = ttk.Frame(self.window, padding="10")
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # 제목
-        channel_name = self.selected_video['snippet']['channelTitle']
-        title_label = tk.Label(
-            main_frame,
-            text=f"📺 {channel_name} 채널 분석",
-            font=("Arial", 14, "bold"),
-            bg='#f0f0f0'
-        )
-        title_label.pack(pady=(0, 10))
-        
-        # 채널 영상 목록
-        list_frame = ttk.LabelFrame(main_frame, text="채널 영상 목록", padding="10")
-        list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
-        
-        # 영상 리스트박스
-        listbox_frame = ttk.Frame(list_frame)
-        listbox_frame.pack(fill=tk.BOTH, expand=True)
-        
-        self.videos_listbox = tk.Listbox(listbox_frame, selectmode=tk.EXTENDED, height=15)
-        scrollbar = ttk.Scrollbar(listbox_frame, orient=tk.VERTICAL, command=self.videos_listbox.yview)
-        self.videos_listbox.configure(yscrollcommand=scrollbar.set)
-        
-        self.videos_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        # 자막 설정
-        settings_frame = ttk.LabelFrame(main_frame, text="자막 다운로드 설정", padding="10")
-        settings_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        # 언어 설정
-        lang_frame = ttk.Frame(settings_frame)
-        lang_frame.pack(fill=tk.X)
-        
-        ttk.Label(lang_frame, text="언어 우선순위:").pack(side=tk.LEFT)
-        self.language_var = tk.StringVar(value="ko_first")
-        ttk.Radiobutton(lang_frame, text="한국어 우선", variable=self.language_var, value="ko_first").pack(side=tk.LEFT, padx=10)
-        ttk.Radiobutton(lang_frame, text="영어 우선", variable=self.language_var, value="en_first").pack(side=tk.LEFT, padx=10)
-        
-        # 음성 인식 설정
-        speech_frame = ttk.Frame(settings_frame)
-        speech_frame.pack(fill=tk.X, pady=(10, 0))
-        
-        self.speech_recognition_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(
-            speech_frame, 
-            text="자막이 없는 경우 음성 인식 사용 (시간 소요 많음)", 
-            variable=self.speech_recognition_var
-        ).pack(side=tk.LEFT)
-        
-        # 버튼
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X)
-        
-        ttk.Button(button_frame, text="전체 선택", command=self.select_all).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(button_frame, text="선택 해제", command=self.select_none).pack(side=tk.LEFT, padx=(0, 10))
-        
-        ttk.Button(button_frame, text="📝 대본 다운로드", command=self.download_transcripts).pack(side=tk.RIGHT, padx=(10, 0))
-        ttk.Button(button_frame, text="닫기", command=self.window.destroy).pack(side=tk.RIGHT)
-    
-    def load_channel_videos(self):
-        """채널 영상 목록 로드"""
-        channel_id = self.selected_video['snippet']['channelId']
-        
-        # 로딩 메시지
-        self.videos_listbox.insert(tk.END, "채널 영상 목록 로드 중...")
-        self.window.update()
-        
-        try:
-            self.channel_videos = self.api_client.get_channel_videos(channel_id, max_results=50)
-            
-            # 리스트박스 초기화
-            self.videos_listbox.delete(0, tk.END)
-            
-            # 영상 목록 추가
-            for i, video in enumerate(self.channel_videos, 1):
-                title = video['title'][:60] + "..." if len(video['title']) > 60 else video['title']
-                views = f"{video.get('view_count', 0):,}"
-                duration_seconds = self.api_client.parse_duration(video.get('duration', 'PT0S'))
-                
-                if duration_seconds < 3600:
-                    duration_str = f"{duration_seconds//60:02d}:{duration_seconds%60:02d}"
-                else:
-                    hours = duration_seconds // 3600
-                    minutes = (duration_seconds % 3600) // 60
-                    seconds = duration_seconds % 60
-                    duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-                
-                display_text = f"{i:2d}. {title} | 👁 {views} | ⏰ {duration_str}"
-                self.videos_listbox.insert(tk.END, display_text)
-            
-            if not self.channel_videos:
-                self.videos_listbox.insert(tk.END, "채널 영상을 찾을 수 없습니다.")
-                
-        except Exception as e:
-            self.videos_listbox.delete(0, tk.END)
-            self.videos_listbox.insert(tk.END, f"오류: {str(e)}")
-    
-    def select_all(self):
-        """전체 선택"""
-        self.videos_listbox.select_set(0, tk.END)
-    
-    def select_none(self):
-        """선택 해제"""
-        self.videos_listbox.selection_clear(0, tk.END)
-    
-    def download_transcripts(self):
-        """선택된 영상들의 대본 다운로드"""
-        selection = self.videos_listbox.curselection()
-        
-        if not selection:
-            messagebox.showwarning("선택 오류", "다운로드할 영상을 선택해주세요.")
-            return
-        
-        # 선택된 영상들 정보 수집
-        selected_videos = [self.channel_videos[i] for i in selection]
-        
-        if not selected_videos:
-            return
-        
-        # 언어 설정
-        lang_setting = self.language_var.get()
-        if lang_setting == "ko_first":
-            language_codes = ['ko', 'kr', 'en']
-        else:
-            language_codes = ['en', 'ko', 'kr']
-        
-        enable_speech = self.speech_recognition_var.get()
-        
-        # 확인 대화상자
-        confirm_msg = f"{len(selected_videos)}개 영상의 대본을 다운로드하시겠습니까?"
-        if enable_speech:
-            confirm_msg += "\\n\\n⚠️ 음성 인식이 활성화되어 시간이 많이 소요될 수 있습니다."
-        
-        if not messagebox.askyesno("다운로드 확인", confirm_msg):
-            return
-        
-        # 진행 창 생성
-        progress_window = self.create_progress_window(len(selected_videos))
-        
-        # 별도 스레드에서 다운로드 실행
-        download_thread = threading.Thread(
-            target=self.run_transcript_download,
-            args=(selected_videos, language_codes, enable_speech, progress_window)
-        )
-        download_thread.daemon = True
-        download_thread.start()
-    
-    def create_progress_window(self, total_videos):
-        """진행 상황 창 생성"""
-        progress_window = tk.Toplevel(self.window)
-        progress_window.title("대본 다운로드 진행 상황")
-        progress_window.geometry("400x200")
-        progress_window.configure(bg='#f0f0f0')
-        
-        frame = ttk.Frame(progress_window, padding="20")
-        frame.pack(fill=tk.BOTH, expand=True)
-        
-        ttk.Label(frame, text="대본 다운로드 중...", font=("Arial", 12)).pack(pady=(0, 10))
-        
-        progress_var = tk.StringVar()
-        progress_label = ttk.Label(frame, textvariable=progress_var)
-        progress_label.pack(pady=(0, 10))
-        
-        progress_bar = ttk.Progressbar(frame, maximum=total_videos, mode='determinate')
-        progress_bar.pack(fill=tk.X, pady=(0, 10))
-        
-        # 취소 버튼은 구현하지 않음 (복잡성 때문에)
-        
-        return {
-            'window': progress_window,
-            'progress_var': progress_var,
-            'progress_bar': progress_bar
-        }
-    
-    def run_transcript_download(self, selected_videos, language_codes, enable_speech, progress_window):
-        """대본 다운로드 실행"""
-        try:
-            # Whisper 모델 로드 (음성 인식 사용시)
-            if enable_speech:
-                self.window.after(0, lambda: progress_window['progress_var'].set("Whisper 모델 로딩 중..."))
-                if not self.transcript_downloader.load_whisper_model("base"):
-                    self.window.after(0, lambda: messagebox.showerror("오류", "Whisper 모델 로드에 실패했습니다."))
-                    self.window.after(0, lambda: progress_window['window'].destroy())
-                    return
-            
-            # 대본 다운로드
-            downloaded_files = []
-            failed_videos = []
-            
-            for i, video in enumerate(selected_videos, 1):
-                video_title = video['title'][:30] + "..." if len(video['title']) > 30 else video['title']
-                progress_text = f"진행: {i}/{len(selected_videos)} - {video_title}"
-                
-                self.window.after(0, lambda t=progress_text: progress_window['progress_var'].set(t))
-                self.window.after(0, lambda i=i: progress_window['progress_bar'].config(value=i))
-                
-                # 대본 다운로드 시도
-                result = self.transcript_downloader.download_transcript(
-                    video['id'],
-                    video['title'],
-                    language_codes,
-                    enable_speech_recognition=enable_speech
-                )
-                
-                if result['success']:
-                    downloaded_files.append(result['file_path'])
-                else:
-                    failed_videos.append(f"{video['title']}: {result.get('error', '알 수 없는 오류')}")
-            
-            # ZIP 파일 생성
-            channel_name = self.selected_video['snippet']['channelTitle']
-            zip_file = self.transcript_downloader.create_transcript_zip(channel_name)
-            
-            # 결과 표시
-            self.window.after(0, lambda: self.show_download_results(
-                len(selected_videos), len(downloaded_files), len(failed_videos), 
-                zip_file, failed_videos, progress_window
-            ))
-            
-        except Exception as e:
-            error_msg = f"대본 다운로드 중 오류 발생: {str(e)}"
-            self.window.after(0, lambda: messagebox.showerror("다운로드 오류", error_msg))
-            self.window.after(0, lambda: progress_window['window'].destroy())
-    
-    def show_download_results(self, total, success, failed, zip_file, failed_list, progress_window):
-        """다운로드 결과 표시"""
-        progress_window['window'].destroy()
-        
-        result_msg = f"대본 다운로드 완료!\\n\\n"
-        result_msg += f"총 요청: {total}개\\n"
-        result_msg += f"성공: {success}개\\n"
-        result_msg += f"실패: {failed}개\\n"
-        
-        if zip_file:
-            result_msg += f"\\n📦 ZIP 파일: {zip_file}"
-        
-        if failed_list:
-            result_msg += f"\\n\\n실패한 영상들:\\n"
-            for fail in failed_list[:5]:  # 최대 5개만 표시
-                result_msg += f"• {fail}\\n"
-            if len(failed_list) > 5:
-                result_msg += f"... 외 {len(failed_list) - 5}개 더"
-        
-        messagebox.showinfo("다운로드 완료", result_msg)
 
 class ThumbnailDownloadWindow:
     def __init__(self, parent, analyzed_videos, api_client):
@@ -981,7 +887,7 @@ class ThumbnailDownloadWindow:
         # 새 창 생성
         self.window = tk.Toplevel(parent)
         self.window.title("🖼️ 썸네일 다운로드")
-        self.window.geometry("900x600")
+        self.window.geometry("950x650")
         self.window.configure(bg='#f0f0f0')
         
         self.create_widgets()
@@ -1049,13 +955,15 @@ class ThumbnailDownloadWindow:
             rank_label.pack(side=tk.LEFT)
             
             # 제목과 정보
-            title = video['snippet']['title'][:60] + "..." if len(video['snippet']['title']) > 60 else video['snippet']['title']
+            title = video['snippet']['title'][:55] + "..." if len(video['snippet']['title']) > 55 else video['snippet']['title']
             channel = video['snippet']['channelTitle'][:20] + "..." if len(video['snippet']['channelTitle']) > 20 else video['snippet']['channelTitle']
             views = f"{int(video['statistics'].get('viewCount', 0)):,}"
             outlier_score = f"{video['analysis']['outlier_score']:.1f}x"
+            video_type = video['analysis'].get('video_type', '알수없음')
+            duration = video['analysis'].get('formatted_duration', '00:00')
             
-            info_text = f"{title} | 📺 {channel} | 📊 {views} 조회수 | 🔥 {outlier_score}"
-            info_label = tk.Label(frame, text=info_text, anchor='w', bg='white')
+            info_text = f"{title} | 📺 {channel} | 📊 {views} 조회수 | 🔥 {outlier_score} | 🎬 {video_type} ({duration})"
+            info_label = tk.Label(frame, text=info_text, anchor='w', bg='white', font=("Arial", 9))
             info_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(10, 0))
         
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
@@ -1068,7 +976,9 @@ class ThumbnailDownloadWindow:
         ttk.Button(select_frame, text="전체 선택", command=self.select_all).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(select_frame, text="선택 해제", command=self.select_none).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(select_frame, text="상위 10개", command=self.select_top_10).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(select_frame, text="바이럴 영상만", command=self.select_viral).pack(side=tk.LEFT)
+        ttk.Button(select_frame, text="바이럴 영상만", command=self.select_viral).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(select_frame, text="롱폼만", command=self.select_long).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(select_frame, text="쇼츠만", command=self.select_shorts).pack(side=tk.LEFT)
         
         # 다운로드 버튼
         button_frame = ttk.Frame(main_frame)
@@ -1094,11 +1004,25 @@ class ThumbnailDownloadWindow:
             var.set(i < 10)
     
     def select_viral(self):
-        """바이럴 영상만 선택"""
+        """바이럴 영상만 선택 (Outlier Score 3.0x 이상)"""
         for i, var in enumerate(self.checkbox_vars):
             if i < len(self.analyzed_videos):
                 outlier_score = self.analyzed_videos[i]['analysis']['outlier_score']
-                var.set(outlier_score >= 3.0)  # 3.0x 이상을 바이럴로 간주
+                var.set(outlier_score >= 3.0)
+    
+    def select_long(self):
+        """롱폼 영상만 선택"""
+        for i, var in enumerate(self.checkbox_vars):
+            if i < len(self.analyzed_videos):
+                video_type = self.analyzed_videos[i]['analysis'].get('video_type', '')
+                var.set(video_type == '롱폼')
+    
+    def select_shorts(self):
+        """쇼츠 영상만 선택"""
+        for i, var in enumerate(self.checkbox_vars):
+            if i < len(self.analyzed_videos):
+                video_type = self.analyzed_videos[i]['analysis'].get('video_type', '')
+                var.set(video_type == '쇼츠')
     
     def get_selected_videos(self):
         """선택된 영상들 반환"""
@@ -1132,7 +1056,6 @@ class ThumbnailDownloadWindow:
             messagebox.showwarning("선택 오류", "다운로드할 영상을 선택해주세요.")
             return
         
-        from tkinter import filedialog
         folder = filedialog.askdirectory(title="썸네일 저장 폴더 선택")
         
         if folder:
@@ -1140,7 +1063,9 @@ class ThumbnailDownloadWindow:
     
     def start_download(self, selected_videos, custom_folder=None):
         """다운로드 시작"""
-        if not messagebox.askyesno("다운로드 확인", f"{len(selected_videos)}개 영상의 썸네일을 다운로드하시겠습니까?"):
+        if not messagebox.askyesno("다운로드 확인", 
+                                 f"{len(selected_videos)}개 영상의 썸네일을 다운로드하시겠습니까?\n\n"
+                                 f"저장 위치: {custom_folder if custom_folder else '기본 폴더 (thumbnails/)'}"):
             return
         
         # 진행 창 생성
@@ -1158,7 +1083,7 @@ class ThumbnailDownloadWindow:
         """진행 상황 창 생성"""
         progress_window = tk.Toplevel(self.window)
         progress_window.title("썸네일 다운로드 진행 상황")
-        progress_window.geometry("400x150")
+        progress_window.geometry("450x200")
         progress_window.configure(bg='#f0f0f0')
         
         frame = ttk.Frame(progress_window, padding="20")
@@ -1171,7 +1096,11 @@ class ThumbnailDownloadWindow:
         progress_label.pack(pady=(0, 10))
         
         progress_bar = ttk.Progressbar(frame, maximum=total_count, mode='determinate')
-        progress_bar.pack(fill=tk.X)
+        progress_bar.pack(fill=tk.X, pady=(0, 10))
+        
+        # 취소 버튼 (구현하지 않음 - 복잡성 때문에)
+        ttk.Label(frame, text="다운로드가 완료될 때까지 기다려주세요...", 
+                 font=("Arial", 9), foreground="gray").pack()
         
         return {
             'window': progress_window,
@@ -1182,55 +1111,71 @@ class ThumbnailDownloadWindow:
     def run_thumbnail_download(self, selected_videos, custom_folder, progress_window):
         """썸네일 다운로드 실행"""
         try:
-            # 폴더 설정
+            downloaded_files = []
+            failed_count = 0
+            
+            # 폴더 생성
             if custom_folder:
-                import tempfile
-                import shutil
-                
-                # 임시로 기본 썸네일 폴더를 변경
-                original_folder = 'thumbnails'
-                temp_folder = custom_folder
-                
-                # custom_folder를 썸네일 폴더로 사용
-                for i, video_info in enumerate(selected_videos, 1):
-                    progress_text = f"다운로드 중: {i}/{len(selected_videos)}"
-                    self.window.after(0, lambda t=progress_text: progress_window['progress_var'].set(t))
-                    self.window.after(0, lambda i=i: progress_window['progress_bar'].config(value=i))
-                    
-                    if video_info['thumbnail_url']:
-                        # 커스텀 폴더에 직접 다운로드
-                        import os
-                        import requests
-                        import re
-                        
-                        try:
-                            response = requests.get(video_info['thumbnail_url'], timeout=10)
-                            if response.status_code == 200:
-                                os.makedirs(temp_folder, exist_ok=True)
-                                
-                                safe_title = re.sub(r'[^\w\s-]', '', video_info['title'].replace(' ', '_'))[:30]
-                                filename = f"{video_info['rank']:03d}_{safe_title}_{video_info['video_id']}.jpg"
-                                
-                                file_path = os.path.join(temp_folder, filename)
-                                
-                                with open(file_path, 'wb') as f:
-                                    f.write(response.content)
-                        except Exception as e:
-                            print(f"썸네일 다운로드 오류: {e}")
-                
-                result_msg = f"썸네일 다운로드 완료!\\n\\n저장 위치: {custom_folder}\\n다운로드된 파일: {len(selected_videos)}개"
+                download_folder = custom_folder
             else:
-                # 기본 API 사용
-                result = self.api_client.download_multiple_thumbnails(selected_videos)
+                download_folder = 'thumbnails'
+            
+            os.makedirs(download_folder, exist_ok=True)
+            
+            for i, video_info in enumerate(selected_videos, 1):
+                # 진행 상황 업데이트
+                progress_text = f"다운로드 중: {i}/{len(selected_videos)} - {video_info.get('title', '')[:30]}..."
+                self.window.after(0, lambda t=progress_text: progress_window['progress_var'].set(t))
+                self.window.after(0, lambda i=i: progress_window['progress_bar'].config(value=i))
                 
-                if result['success']:
-                    result_msg = f"썸네일 다운로드 완료!\\n\\n"
-                    result_msg += f"성공: {len(result['downloaded_files'])}개\\n"
-                    result_msg += f"실패: {result['failed_count']}개\\n"
-                    if result.get('zip_file'):
-                        result_msg += f"\\nZIP 파일: {result['zip_file']}"
+                if video_info['thumbnail_url']:
+                    try:
+                        response = requests.get(video_info['thumbnail_url'], timeout=10)
+                        if response.status_code == 200:
+                            # 안전한 파일명 생성
+                            safe_title = re.sub(r'[^\w\s-]', '', video_info['title'].replace(' ', '_'))[:30]
+                            filename = f"{video_info['rank']:03d}_{safe_title}_{video_info['video_id']}.jpg"
+                            
+                            file_path = os.path.join(download_folder, filename)
+                            
+                            with open(file_path, 'wb') as f:
+                                f.write(response.content)
+                            
+                            downloaded_files.append(file_path)
+                        else:
+                            failed_count += 1
+                    except Exception as e:
+                        print(f"썸네일 다운로드 오류: {e}")
+                        failed_count += 1
                 else:
-                    result_msg = f"다운로드 실패: {result.get('error', '알 수 없는 오류')}"
+                    failed_count += 1
+            
+            # ZIP 파일 생성 (옵션)
+            zip_file = None
+            if downloaded_files and not custom_folder:
+                try:
+                    import zipfile
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    zip_filename = f"selected_thumbnails_{timestamp}.zip"
+                    
+                    with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                        for file_path in downloaded_files:
+                            if os.path.exists(file_path):
+                                filename = os.path.basename(file_path)
+                                zipf.write(file_path, filename)
+                    
+                    zip_file = zip_filename
+                except Exception as e:
+                    print(f"ZIP 파일 생성 오류: {e}")
+            
+            # 결과 메시지 생성
+            result_msg = f"썸네일 다운로드 완료!\n\n"
+            result_msg += f"성공: {len(downloaded_files)}개\n"
+            result_msg += f"실패: {failed_count}개\n"
+            result_msg += f"저장 위치: {download_folder}\n"
+            
+            if zip_file:
+                result_msg += f"\nZIP 파일: {zip_file}"
             
             # 결과 표시
             self.window.after(0, lambda: self.show_download_result(result_msg, progress_window))
@@ -1244,6 +1189,353 @@ class ThumbnailDownloadWindow:
         """다운로드 결과 표시"""
         progress_window['window'].destroy()
         messagebox.showinfo("다운로드 완료", result_msg)
+
+
+class ChannelAnalysisWindow:
+    def __init__(self, parent, selected_video, api_client, transcript_downloader):
+        self.parent = parent
+        self.selected_video = selected_video
+        self.api_client = api_client
+        self.transcript_downloader = transcript_downloader
+        
+        # 새 창 생성
+        self.window = tk.Toplevel(parent)
+        self.window.title(f"📺 채널 분석 - {selected_video['snippet']['channelTitle']}")
+        self.window.geometry("900x700")
+        self.window.configure(bg='#f0f0f0')
+        
+        # 채널 영상 목록
+        self.channel_videos = []
+        self.selected_videos = []
+        
+        self.create_widgets()
+        self.load_channel_videos()
+    
+    def create_widgets(self):
+        """위젯 생성"""
+        main_frame = ttk.Frame(self.window, padding="10")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 제목
+        channel_name = self.selected_video['snippet']['channelTitle']
+        title_label = tk.Label(
+            main_frame,
+            text=f"📺 {channel_name} 채널 분석",
+            font=("Arial", 14, "bold"),
+            bg='#f0f0f0'
+        )
+        title_label.pack(pady=(0, 10))
+        
+        # 기준 영상 정보
+        info_frame = ttk.LabelFrame(main_frame, text="기준 영상 정보", padding="10")
+        info_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        base_video_title = self.selected_video['snippet']['title'][:60] + "..." if len(self.selected_video['snippet']['title']) > 60 else self.selected_video['snippet']['title']
+        base_video_views = f"{int(self.selected_video['statistics'].get('viewCount', 0)):,}"
+        base_video_outlier = f"{self.selected_video['analysis']['outlier_score']:.1f}x"
+        
+        info_text = f"🎬 {base_video_title}\n📊 {base_video_views} 조회수 | 🔥 {base_video_outlier} Outlier점수"
+        info_label = tk.Label(info_frame, text=info_text, bg='#f0f0f0', justify=tk.LEFT)
+        info_label.pack(anchor=tk.W)
+        
+        # 채널 영상 목록
+        list_frame = ttk.LabelFrame(main_frame, text="채널 영상 목록", padding="10")
+        list_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        
+        # 영상 리스트박스
+        listbox_frame = ttk.Frame(list_frame)
+        listbox_frame.pack(fill=tk.BOTH, expand=True)
+        
+        self.videos_listbox = tk.Listbox(listbox_frame, selectmode=tk.EXTENDED, height=15, font=("Arial", 9))
+        scrollbar_videos = ttk.Scrollbar(listbox_frame, orient=tk.VERTICAL, command=self.videos_listbox.yview)
+        self.videos_listbox.configure(yscrollcommand=scrollbar_videos.set)
+        
+        self.videos_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar_videos.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # 더블클릭으로 영상 열기
+        self.videos_listbox.bind("<Double-1>", self.on_video_double_click)
+        
+        # 자막 설정
+        settings_frame = ttk.LabelFrame(main_frame, text="자막 다운로드 설정", padding="10")
+        settings_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # 언어 설정
+        lang_frame = ttk.Frame(settings_frame)
+        lang_frame.pack(fill=tk.X)
+        
+        ttk.Label(lang_frame, text="언어 우선순위:").pack(side=tk.LEFT)
+        self.language_var = tk.StringVar(value="ko_first")
+        ttk.Radiobutton(lang_frame, text="한국어 우선", variable=self.language_var, value="ko_first").pack(side=tk.LEFT, padx=10)
+        ttk.Radiobutton(lang_frame, text="영어 우선", variable=self.language_var, value="en_first").pack(side=tk.LEFT, padx=10)
+        
+        # 음성 인식 설정
+        speech_frame = ttk.Frame(settings_frame)
+        speech_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        self.speech_recognition_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            speech_frame, 
+            text="자막이 없는 경우 음성 인식 사용 (시간 소요 많음)", 
+            variable=self.speech_recognition_var
+        ).pack(side=tk.LEFT)
+        
+        # 버튼
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X)
+        
+        ttk.Button(button_frame, text="전체 선택", command=self.select_all).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(button_frame, text="선택 해제", command=self.select_none).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(button_frame, text="📺 채널 페이지 열기", command=self.open_channel_page).pack(side=tk.LEFT, padx=(0, 10))
+        
+        ttk.Button(button_frame, text="📝 대본 다운로드", command=self.download_transcripts).pack(side=tk.RIGHT, padx=(10, 0))
+        ttk.Button(button_frame, text="닫기", command=self.window.destroy).pack(side=tk.RIGHT)
+    
+    def load_channel_videos(self):
+        """채널 영상 목록 로드"""
+        channel_id = self.selected_video['snippet']['channelId']
+        
+        # 로딩 메시지
+        self.videos_listbox.insert(tk.END, "채널 영상 목록 로드 중...")
+        self.window.update()
+        
+        try:
+            self.channel_videos = self.api_client.get_channel_videos(channel_id, max_results=50)
+            
+            # 리스트박스 초기화
+            self.videos_listbox.delete(0, tk.END)
+            
+            # 영상 목록 추가
+            for i, video in enumerate(self.channel_videos, 1):
+                title = video['title'][:50] + "..." if len(video['title']) > 50 else video['title']
+                views = f"{video.get('view_count', 0):,}"
+                duration_seconds = 0
+                
+                try:
+                    duration_seconds = self.api_client.parse_duration(video.get('duration', 'PT0S'))
+                except:
+                    pass
+                
+                if duration_seconds < 3600:
+                    duration_str = f"{duration_seconds//60:02d}:{duration_seconds%60:02d}"
+                else:
+                    hours = duration_seconds // 3600
+                    minutes = (duration_seconds % 3600) // 60
+                    seconds = duration_seconds % 60
+                    duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                
+                # 영상 유형 판별
+                video_type = "쇼츠" if duration_seconds <= 60 else "롱폼"
+                published_date = video['published_at'][:10]  # YYYY-MM-DD
+                
+                display_text = f"{i:2d}. {title} | 👁 {views} | ⏰ {duration_str} | 🎬 {video_type} | 📅 {published_date}"
+                self.videos_listbox.insert(tk.END, display_text)
+            
+            if not self.channel_videos:
+                self.videos_listbox.insert(tk.END, "채널 영상을 찾을 수 없습니다.")
+            else:
+                print(f"✅ 채널 영상 목록 로드 완료: {len(self.channel_videos)}개")
+                
+        except Exception as e:
+            self.videos_listbox.delete(0, tk.END)
+            self.videos_listbox.insert(tk.END, f"오류: {str(e)}")
+            print(f"❌ 채널 영상 목록 로드 오류: {e}")
+    
+    def on_video_double_click(self, event):
+        """영상 더블클릭시 YouTube에서 열기"""
+        selection = self.videos_listbox.curselection()
+        if selection:
+            index = selection[0]
+            if 0 <= index < len(self.channel_videos):
+                video_id = self.channel_videos[index]['id']
+                video_url = f"https://www.youtube.com/watch?v={video_id}"
+                webbrowser.open(video_url)
+    
+    def open_channel_page(self):
+        """채널 페이지 열기"""
+        channel_id = self.selected_video['snippet']['channelId']
+        channel_url = f"https://www.youtube.com/channel/{channel_id}"
+        webbrowser.open(channel_url)
+    
+    def select_all(self):
+        """전체 선택"""
+        self.videos_listbox.select_set(0, tk.END)
+    
+    def select_none(self):
+        """선택 해제"""
+        self.videos_listbox.selection_clear(0, tk.END)
+    
+    def download_transcripts(self):
+        """선택된 영상들의 대본 다운로드"""
+        selection = self.videos_listbox.curselection()
+        
+        if not selection:
+            messagebox.showwarning("선택 오류", "다운로드할 영상을 선택해주세요.")
+            return
+        
+        # 선택된 영상들 정보 수집
+        selected_videos = [self.channel_videos[i] for i in selection]
+        
+        if not selected_videos:
+            return
+        
+        # 언어 설정
+        lang_setting = self.language_var.get()
+        if lang_setting == "ko_first":
+            language_codes = ['ko', 'kr', 'en']
+        else:
+            language_codes = ['en', 'ko', 'kr']
+        
+        enable_speech = self.speech_recognition_var.get()
+        
+        # 확인 대화상자
+        channel_name = self.selected_video['snippet']['channelTitle']
+        confirm_msg = f"{len(selected_videos)}개 영상의 대본을 다운로드하시겠습니까?\n\n"
+        confirm_msg += f"채널: {channel_name}\n"
+        confirm_msg += f"언어: {language_codes[0]} 우선\n"
+        
+        if enable_speech:
+            confirm_msg += "\n⚠️ 음성 인식이 활성화되어 시간이 많이 소요될 수 있습니다."
+        
+        if not messagebox.askyesno("다운로드 확인", confirm_msg):
+            return
+        
+        # 진행 창 생성
+        progress_window = self.create_progress_window(len(selected_videos))
+        
+        # 별도 스레드에서 다운로드 실행
+        download_thread = threading.Thread(
+            target=self.run_transcript_download,
+            args=(selected_videos, language_codes, enable_speech, progress_window)
+        )
+        download_thread.daemon = True
+        download_thread.start()
+    
+    def create_progress_window(self, total_videos):
+        """진행 상황 창 생성"""
+        progress_window = tk.Toplevel(self.window)
+        progress_window.title("대본 다운로드 진행 상황")
+        progress_window.geometry("500x250")
+        progress_window.configure(bg='#f0f0f0')
+        
+        frame = ttk.Frame(progress_window, padding="20")
+        frame.pack(fill=tk.BOTH, expand=True)
+        
+        ttk.Label(frame, text="대본 다운로드 중...", font=("Arial", 12)).pack(pady=(0, 10))
+        
+        progress_var = tk.StringVar()
+        progress_label = ttk.Label(frame, textvariable=progress_var, wraplength=450)
+        progress_label.pack(pady=(0, 10))
+        
+        progress_bar = ttk.Progressbar(frame, maximum=total_videos, mode='determinate')
+        progress_bar.pack(fill=tk.X, pady=(0, 10))
+        
+        # 상태 정보
+        status_var = tk.StringVar()
+        status_label = ttk.Label(frame, textvariable=status_var, font=("Arial", 9), foreground="gray")
+        status_label.pack()
+        
+        return {
+            'window': progress_window,
+            'progress_var': progress_var,
+            'progress_bar': progress_bar,
+            'status_var': status_var
+        }
+    
+    def run_transcript_download(self, selected_videos, language_codes, enable_speech, progress_window):
+        """대본 다운로드 실행"""
+        try:
+            # Whisper 모델 로드 (음성 인식 사용시)
+            if enable_speech:
+                self.window.after(0, lambda: progress_window['progress_var'].set("Whisper 모델 로딩 중..."))
+                self.window.after(0, lambda: progress_window['status_var'].set("AI 음성 인식 모델을 준비하고 있습니다..."))
+                
+                if not self.transcript_downloader.load_whisper_model("base"):
+                    self.window.after(0, lambda: messagebox.showerror("오류", "Whisper 모델 로드에 실패했습니다."))
+                    self.window.after(0, lambda: progress_window['window'].destroy())
+                    return
+            
+            # 대본 다운로드
+            downloaded_files = []
+            failed_videos = []
+            speech_recognized = 0
+            
+            for i, video in enumerate(selected_videos, 1):
+                video_title = video['title'][:30] + "..." if len(video['title']) > 30 else video['title']
+                progress_text = f"진행: {i}/{len(selected_videos)} - {video_title}"
+                
+                self.window.after(0, lambda t=progress_text: progress_window['progress_var'].set(t))
+                self.window.after(0, lambda i=i: progress_window['progress_bar'].config(value=i))
+                
+                # 현재 작업 상태 표시
+                if enable_speech:
+                    status_text = "자막 확인 중..."
+                    self.window.after(0, lambda s=status_text: progress_window['status_var'].set(s))
+                
+                # 대본 다운로드 시도
+                result = self.transcript_downloader.download_transcript(
+                    video['id'],
+                    video['title'],
+                    language_codes,
+                    enable_speech_recognition=enable_speech
+                )
+                
+                if result['success']:
+                    downloaded_files.append(result['file_path'])
+                    if result.get('method') == 'speech_recognition':
+                        speech_recognized += 1
+                else:
+                    failed_videos.append(f"{video['title']}: {result.get('error', '알 수 없는 오류')}")
+            
+            # ZIP 파일 생성
+            channel_name = self.selected_video['snippet']['channelTitle']
+            zip_file = self.transcript_downloader.create_transcript_zip(channel_name)
+            
+            # 결과 표시
+            self.window.after(0, lambda: self.show_download_results(
+                len(selected_videos), len(downloaded_files), len(failed_videos), 
+                speech_recognized, zip_file, failed_videos, progress_window, channel_name
+            ))
+            
+        except Exception as e:
+            error_msg = f"대본 다운로드 중 오류 발생: {str(e)}"
+            self.window.after(0, lambda: messagebox.showerror("다운로드 오류", error_msg))
+            self.window.after(0, lambda: progress_window['window'].destroy())
+    
+    def show_download_results(self, total, success, failed, speech_recognized, zip_file, failed_list, progress_window, channel_name):
+        """다운로드 결과 표시"""
+        progress_window['window'].destroy()
+        
+        result_msg = f"대본 다운로드 완료!\n\n"
+        result_msg += f"채널: {channel_name}\n"
+        result_msg += f"총 요청: {total}개\n"
+        result_msg += f"성공: {success}개\n"
+        result_msg += f"실패: {failed}개\n"
+        
+        if speech_recognized > 0:
+            result_msg += f"음성 인식: {speech_recognized}개\n"
+        
+        if zip_file:
+            result_msg += f"\n📦 ZIP 파일: {zip_file}"
+        
+        result_msg += f"\n📁 개별 파일: transcripts/ 폴더"
+        
+        if failed_list:
+            result_msg += f"\n\n실패한 영상들:\n"
+            for fail in failed_list[:3]:  # 최대 3개만 표시
+                result_msg += f"• {fail}\n"
+            if len(failed_list) > 3:
+                result_msg += f"... 외 {len(failed_list) - 3}개 더"
+        
+        # 활용 팁 추가
+        if success > 0:
+            result_msg += f"\n\n💡 활용 팁:\n"
+            result_msg += f"• 대본을 분석해서 성공 패턴 파악\n"
+            result_msg += f"• 키워드 사용 빈도 및 화법 연구\n"
+            result_msg += f"• 스토리텔링 구조 벤치마킹"
+        
+        messagebox.showinfo("다운로드 완료", result_msg)
+
 
 def main():
     """메인 함수"""
