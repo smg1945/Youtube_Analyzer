@@ -169,6 +169,7 @@ class YouTubeTrendAnalyzerGUI:
         ttk.Radiobutton(sub_frame, text="제한없음", variable=self.max_subscribers_var, value="none").pack(side=tk.LEFT)
         ttk.Radiobutton(sub_frame, text="100만", variable=self.max_subscribers_var, value="1000000").pack(side=tk.LEFT, padx=(5, 0))
         ttk.Radiobutton(sub_frame, text="10만", variable=self.max_subscribers_var, value="100000").pack(side=tk.LEFT, padx=(5, 0))
+        ttk.Radiobutton(sub_frame, text="2만", variable=self.max_subscribers_var, value="20000").pack(side=tk.LEFT, padx=(5, 0))
         
         ttk.Label(self.keyword_frame, text="최소 조회수:").grid(row=7, column=0, sticky=tk.W, pady=(10, 5))
         self.min_views_var = tk.StringVar(value="none")
