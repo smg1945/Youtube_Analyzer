@@ -1,23 +1,23 @@
 """
-YouTube 트렌드 분석기 설정 파일
+YouTube 트렌드 분석기 설정 파일 - 최종 버전
 """
 import os
 from dotenv import load_dotenv
 
+# .env 파일 로드
 load_dotenv()
-
 
 # YouTube Data API 설정
 YOUTUBE_API_SERVICE_NAME = "youtube"
 YOUTUBE_API_VERSION = "v3"
-DEVELOPER_KEY = os.getenv("YOUTUBE_API_KEY")  # 실제 API 키로 교체 필요
+DEVELOPER_KEY = os.getenv("YOUTUBE_API_KEY", "YOUR_YOUTUBE_API_KEY_HERE")
 
-# 기본 설정값
-DEFAULT_REGION = "KR"  # KR(한국) 또는 US(글로벌)
-DEFAULT_PERIOD = "month"  # week 또는 month
-DEFAULT_VIDEO_TYPE = "all"  # all, long, shorts
-DEFAULT_CATEGORY = "all"  # all 또는 특정 카테고리 ID
-MAX_RESULTS = 100  # 분석할 영상 개수
+# 최적화된 기본 설정값
+DEFAULT_REGION = "KR"
+DEFAULT_PERIOD = "week"
+DEFAULT_VIDEO_TYPE = "all"
+DEFAULT_CATEGORY = "all"
+MAX_RESULTS = 200  # 더 많은 결과 제공
 
 # YouTube 카테고리 ID 매핑
 YOUTUBE_CATEGORIES = {
@@ -43,25 +43,25 @@ YOUTUBE_CATEGORIES = {
 SHORT_VIDEO_MAX_DURATION = 60  # 쇼츠 최대 길이 (초)
 LONG_VIDEO_MIN_DURATION = 60   # 롱폼 최소 길이 (초)
 
-# 분석 설정
-COMMENTS_PER_VIDEO = 50  # 영상당 분석할 댓글 수
-KEYWORD_EXTRACTION_COUNT = 10  # 추출할 키워드 개수
+# 최적화된 분석 설정
+COMMENTS_PER_VIDEO = 0  # 댓글 분석 비활성화로 속도 향상
+KEYWORD_EXTRACTION_COUNT = 5  # 키워드 추출 개수
 
 # 엑셀 출력 설정
-EXCEL_FILENAME_FORMAT = "YouTube_Trend_Analysis_{region}_{period}_{timestamp}.xlsx"
+EXCEL_FILENAME_FORMAT = "YouTube_Analysis_{region}_{timestamp}.xlsx"
 THUMBNAIL_COLUMN_WIDTH = 15
 THUMBNAIL_ROW_HEIGHT = 80
 
 # 썸네일 다운로드 설정
-THUMBNAIL_DOWNLOAD_TIMEOUT = 10  # 썸네일 다운로드 타임아웃 (초)
-THUMBNAIL_MAX_FILENAME_LENGTH = 30  # 파일명에 포함될 제목 최대 길이
-THUMBNAIL_QUALITY_PRIORITY = ['maxres', 'high', 'medium', 'default']  # 썸네일 품질 우선순위
+THUMBNAIL_DOWNLOAD_TIMEOUT = 5  # 타임아웃 감소
+THUMBNAIL_MAX_FILENAME_LENGTH = 30
+THUMBNAIL_QUALITY_PRIORITY = ['high', 'medium', 'default']
 
 # 자막 다운로드 설정
-TRANSCRIPT_LANGUAGE_PRIORITY = ['ko', 'kr', 'en']  # 자막 언어 우선순위
-TRANSCRIPT_ALLOW_AUTO_GENERATED = True  # 자동 생성 자막 허용 여부
-TRANSCRIPT_MAX_FILENAME_LENGTH = 50  # 자막 파일명 최대 길이
-CHANNEL_VIDEOS_MAX_RESULTS = 50  # 채널별 영상 최대 가져오기 수
+TRANSCRIPT_LANGUAGE_PRIORITY = ['ko', 'kr', 'en']
+TRANSCRIPT_ALLOW_AUTO_GENERATED = True
+TRANSCRIPT_MAX_FILENAME_LENGTH = 50
+CHANNEL_VIDEOS_MAX_RESULTS = 50
 
 # 지역별 설정
 REGION_SETTINGS = {
@@ -79,45 +79,45 @@ REGION_SETTINGS = {
 
 # API 요청 제한 설정
 API_QUOTA_LIMIT = 10000  # 일일 할당량
-REQUESTS_PER_SECOND = 10  # 초당 요청 제한
-# 참고 (API 사용량):
-# - 일반 모드: ~2,000-4,000 units (채널별 Outlier Score 계산 포함)
-# - 경량 모드: ~200-400 units (Outlier Score 간소화, 댓글 분석 생략)
-# - 키워드 검색: ~1,500-3,000 units (필터 조건에 따라 변동)
-# - 할당량 리셋: 매일 자정 UTC 기준
-# ⚠️ 할당량 초과 시 경량 모드를 사용하세요!
+REQUESTS_PER_SECOND = 20  # 초당 요청 제한
 
-# 3. API 키 테스트 코드
-def test_api_key():
-    """API 키 테스트"""
-    try:
-        from googleapiclient.discovery import build
-        
-        # 여기에 실제 API 키 입력
-        API_KEY = "AIzaSyC-dK6T-XXXXX-XXXXXXXXXXXXXXXXXXXXX"  # 실제 API 키로 변경
-        
-        youtube = build('youtube', 'v3', developerKey=API_KEY)
-        
-        # 간단한 API 호출 테스트
-        request = youtube.videos().list(
-            part='snippet',
-            chart='mostPopular',
-            regionCode='KR',
-            maxResults=1
-        )
-        response = request.execute()
-        
-        print("✅ API 키가 올바르게 설정되었습니다!")
-        print(f"테스트 결과: {len(response.get('items', []))}개 영상 조회")
-        return True
-        
-    except Exception as e:
-        print(f"❌ API 키 오류: {e}")
-        if "keyInvalid" in str(e):
-            print("💡 해결방법: API 키가 잘못되었습니다. Google Cloud Console에서 새 API 키를 발급받으세요.")
-        elif "quotaExceeded" in str(e):
-            print("💡 해결방법: API 할당량이 초과되었습니다. 내일 다시 시도하거나 새 프로젝트를 만드세요.")
+# 검색 최적화 설정
+SEARCH_MAX_PAGES = 10  # 페이지당 50개 = 최대 500개 검색
+SEARCH_RESULTS_PER_PAGE = 50
+BATCH_SIZE = 50  # 배치 처리 크기
+
+# 병렬 처리 설정
+MAX_WORKERS = 10  # 병렬 처리 워커 수
+ENABLE_PARALLEL_PROCESSING = True
+
+# 캐싱 설정
+ENABLE_CHANNEL_CACHE = True  # 채널 정보 캐싱
+CACHE_DURATION_MINUTES = 30  # 캐시 유효 시간
+
+def get_optimized_settings():
+    """최적화된 설정 반환"""
+    return {
+        'light_mode': True,  # 항상 경량 모드
+        'skip_comments': True,  # 댓글 분석 스킵
+        'parallel_processing': ENABLE_PARALLEL_PROCESSING,
+        'cache_channels': ENABLE_CHANNEL_CACHE,
+        'batch_size': BATCH_SIZE,
+        'max_workers': MAX_WORKERS
+    }
+
+# 설정 검증
+def validate_config():
+    """설정 유효성 검사"""
+    if DEVELOPER_KEY == "YOUR_YOUTUBE_API_KEY_HERE":
+        print("⚠️  YouTube API 키가 설정되지 않았습니다.")
+        print("   config.py 또는 .env 파일에서 DEVELOPER_KEY를 설정하세요.")
         return False
+    return True
 
+# 테스트 함수
 if __name__ == "__main__":
-    test_api_key()
+    print("🔧 설정 파일 테스트")
+    print(f"API 키 설정: {'✅' if validate_config() else '❌'}")
+    print(f"기본 지역: {DEFAULT_REGION}")
+    print(f"최대 결과: {MAX_RESULTS}")
+    print(f"병렬 처리: {'활성화' if ENABLE_PARALLEL_PROCESSING else '비활성화'}")
