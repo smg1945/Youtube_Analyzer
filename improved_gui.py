@@ -621,19 +621,14 @@ class ImprovedYouTubeAnalyzerGUI:
     
     def start_analysis(self):
         """분석 시작"""
-        # 입력값 검증
         keyword = self.keyword_entry.get().strip()
         if not keyword:
-            messagebox.showwarning("입력 오류", "검색 키워드를 입력해주세요.")
+            messagebox.showwarning("오류", "검색 키워드를 입력해주세요.")
             return
         
         api_key = self.api_entry.get().strip()
         if not api_key:
-            messagebox.showwarning("API 키 오류", "YouTube API 키를 입력해주세요.")
-            return
-        
-        if api_key == "YOUR_YOUTUBE_API_KEY_HERE":
-            messagebox.showwarning("API 키 오류", "유효한 YouTube API 키를 입력해주세요.")
+            messagebox.showwarning("오류", "API 키를 입력해주세요.")
             return
         
         # 버튼 비활성화
@@ -644,18 +639,11 @@ class ImprovedYouTubeAnalyzerGUI:
         for item in self.tree.get_children():
             self.tree.delete(item)
         
-        self.results_count_label.config(text="")
-        
         # 캐시 초기화
         self.channel_cache = {}
         
         # 설정 준비
-        try:
-            settings = self.prepare_settings()
-        except Exception as e:
-            messagebox.showerror("설정 오류", f"설정 준비 중 오류가 발생했습니다: {str(e)}")
-            self.reset_search_button()
-            return
+        settings = self.prepare_settings()
         
         # 별도 스레드에서 실행
         thread = threading.Thread(target=self.run_analysis, args=(settings,))
@@ -688,16 +676,8 @@ class ImprovedYouTubeAnalyzerGUI:
         """분석 실행"""
         try:
             # API 클라이언트 초기화
-            self.update_progress("🔧 API 클라이언트를 초기화하고 있습니다...")
             self.api_client = YouTubeAPIClient(self.api_entry.get().strip())
             self.analyzer = DataAnalyzer(language='ko')
-            
-            # API 연결 테스트
-            self.update_progress("🔗 API 연결을 테스트하고 있습니다...")
-            if not self.api_client.test_api_connection():
-                self.update_progress("❌ API 연결 테스트 실패. API 키를 확인해주세요.")
-                self.root.after(0, self.reset_search_button)
-                return
             
             # 진행 상황 업데이트
             self.update_progress("🔍 YouTube에서 영상을 검색하고 있습니다...")
@@ -710,8 +690,8 @@ class ImprovedYouTubeAnalyzerGUI:
                 max_subscriber_count=settings['max_subscribers'],
                 min_view_count=settings['min_views'],
                 period_days=settings['period_days'],
-                video_type=settings['video_type']
-                # order 매개변수는 메서드 내부에서 처리
+                video_type=settings['video_type'],
+                order=settings['sort_by']
             )
             
             if not videos:
@@ -724,12 +704,11 @@ class ImprovedYouTubeAnalyzerGUI:
             # 간단한 분석
             analyzed_videos = self.quick_analyze_videos(videos)
             
-            # 결과 정렬 (GUI에서 직접 처리)
+            # 결과 정렬
             if settings['sort_by'] == 'viewCount':
                 analyzed_videos.sort(key=lambda x: int(x['statistics'].get('viewCount', 0)), reverse=True)
             elif settings['sort_by'] == 'date':
                 analyzed_videos.sort(key=lambda x: x['snippet']['publishedAt'], reverse=True)
-            # 'relevance'는 기본 검색 순서 유지
             
             self.analyzed_videos = analyzed_videos
             self.current_settings = settings
@@ -738,13 +717,7 @@ class ImprovedYouTubeAnalyzerGUI:
             self.root.after(0, lambda: self.display_results(analyzed_videos))
             
         except Exception as e:
-            error_msg = str(e)
-            if "quotaExceeded" in error_msg:
-                self.update_progress("❌ API 할당량 초과. 내일 다시 시도해주세요.")
-            elif "keyInvalid" in error_msg:
-                self.update_progress("❌ 잘못된 API 키. 올바른 키를 입력해주세요.")
-            else:
-                self.update_progress(f"❌ 오류: {error_msg}")
+            self.update_progress(f"❌ 오류: {str(e)}")
             self.root.after(0, self.reset_search_button)
     
     def quick_analyze_videos(self, videos):
