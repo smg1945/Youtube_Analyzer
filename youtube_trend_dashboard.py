@@ -1,5 +1,5 @@
 """
-YouTube 트렌드 실시간 대시보드
+YouTube 트렌드 실시간 대시보드 - 레이아웃 수정 버전
 tkinter를 활용한 실시간 트렌드 모니터링 GUI
 """
 
@@ -27,8 +27,12 @@ class YouTubeTrendDashboard:
         self.root.configure(bg=self.bg_color)
         
         # 분석기 초기화
-        from youtube_trend_analyzer import YouTubeTrendKeywordAnalyzer
-        self.analyzer = YouTubeTrendKeywordAnalyzer(api_key)
+        try:
+            from youtube_trend_analyzer import YouTubeTrendKeywordAnalyzer
+            self.analyzer = YouTubeTrendKeywordAnalyzer(api_key)
+        except Exception as e:
+            print(f"분석기 초기화 오류: {e}")
+            self.analyzer = None
         
         # 데이터 저장소
         self.current_trends = []
@@ -50,20 +54,19 @@ class YouTubeTrendDashboard:
         # 헤더
         self.create_header()
         
-        # 메인 컨테이너
-        main_container = tk.Frame(self.root, bg=self.bg_color)
-        main_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
+        # 메인 컨테이너 (PanedWindow 사용으로 변경)
+        main_paned = tk.PanedWindow(self.root, orient=tk.HORIZONTAL, bg=self.bg_color, bd=0, sashwidth=5)
+        main_paned.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
         # 왼쪽: 실시간 트렌드
-        left_frame = tk.Frame(main_container, bg=self.bg_color)
-        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
+        left_frame = tk.Frame(main_paned, bg=self.bg_color)
+        main_paned.add(left_frame, stretch="always")
         
         self.create_trend_list(left_frame)
         
         # 오른쪽: 상세 정보
-        right_frame = tk.Frame(main_container, bg=self.bg_color, width=500)
-        right_frame.pack(side=tk.RIGHT, fill=tk.Y)
-        right_frame.pack_propagate(False)
+        right_frame = tk.Frame(main_paned, bg=self.bg_color, width=500)
+        main_paned.add(right_frame, stretch="never")
         
         self.create_detail_panel(right_frame)
         
@@ -119,8 +122,12 @@ class YouTubeTrendDashboard:
     
     def create_trend_list(self, parent):
         """트렌드 리스트 생성"""
+        # 전체 프레임
+        container = tk.Frame(parent, bg=self.card_bg)
+        container.pack(fill=tk.BOTH, expand=True)
+        
         # 제목
-        title_frame = tk.Frame(parent, bg=self.card_bg)
+        title_frame = tk.Frame(container, bg=self.card_bg)
         title_frame.pack(fill=tk.X, pady=(0, 10))
         
         tk.Label(title_frame, text="🏆 실시간 인기 키워드",
@@ -128,29 +135,41 @@ class YouTubeTrendDashboard:
                 bg=self.card_bg, fg=self.text_color).pack(pady=10)
         
         # 리스트 프레임
-        list_frame = tk.Frame(parent, bg=self.card_bg)
-        list_frame.pack(fill=tk.BOTH, expand=True)
+        list_frame = tk.Frame(container, bg=self.card_bg)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         # 스크롤 가능한 캔버스
-        canvas = tk.Canvas(list_frame, bg=self.card_bg, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=canvas.yview)
-        self.trend_frame = tk.Frame(canvas, bg=self.card_bg)
+        self.canvas = tk.Canvas(list_frame, bg=self.card_bg, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(list_frame, orient="vertical", command=self.canvas.yview)
+        self.trend_frame = tk.Frame(self.canvas, bg=self.card_bg)
         
         self.trend_frame.bind(
             "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=self.trend_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.trend_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=scrollbar.set)
         
-        canvas.pack(side="left", fill="both", expand=True)
+        # Canvas 크기 조정 이벤트
+        def configure_canvas(event):
+            canvas_width = event.width
+            self.canvas.itemconfig(self.canvas_window, width=canvas_width)
+        
+        self.canvas.bind('<Configure>', configure_canvas)
+        
+        # 배치
+        self.canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
     
     def create_detail_panel(self, parent):
         """상세 정보 패널"""
+        # 전체 프레임
+        container = tk.Frame(parent, bg=self.card_bg)
+        container.pack(fill=tk.BOTH, expand=True)
+        
         # 제목
-        title_frame = tk.Frame(parent, bg=self.card_bg)
+        title_frame = tk.Frame(container, bg=self.card_bg)
         title_frame.pack(fill=tk.X, pady=(0, 10))
         
         tk.Label(title_frame, text="📊 키워드 상세 정보",
@@ -158,7 +177,7 @@ class YouTubeTrendDashboard:
                 bg=self.card_bg, fg=self.text_color).pack(pady=10)
         
         # 상세 정보 프레임
-        self.detail_frame = tk.Frame(parent, bg=self.card_bg)
+        self.detail_frame = tk.Frame(container, bg=self.card_bg)
         self.detail_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # 초기 메시지
@@ -180,9 +199,9 @@ class YouTubeTrendDashboard:
         stat_titles = ["총 키워드", "신규 키워드", "급상승 키워드", "분석 영상"]
         
         for i, title in enumerate(stat_titles):
-            card = self.create_stat_card(stats_container, title, "0")
-            card.grid(row=0, column=i, padx=20, pady=30)
-            self.stat_cards.append(card)
+            card_dict = self.create_stat_card(stats_container, title, "0")
+            card_dict['frame'].grid(row=0, column=i, padx=20, pady=30)
+            self.stat_cards.append(card_dict)
     
     def create_stat_card(self, parent, title, value):
         """통계 카드 생성"""
@@ -214,11 +233,17 @@ class YouTubeTrendDashboard:
     def _fetch_trends(self):
         """트렌드 데이터 가져오기"""
         try:
-            # 트렌드 분석
-            report = self.analyzer.generate_trend_report(
-                region_code=self.region_var.get(),
-                save_to_file=False
-            )
+            # 테스트용 더미 데이터 사용
+            report = self._generate_dummy_data()
+            
+            # 실제 데이터 사용 시 아래 주석 해제
+            # if self.analyzer:
+            #     report = self.analyzer.generate_trend_report(
+            #         region_code=self.region_var.get(),
+            #         save_to_file=False
+            #     )
+            # else:
+            #     report = self._generate_dummy_data()
             
             # 이전 데이터와 비교
             if self.current_trends:
@@ -230,7 +255,60 @@ class YouTubeTrendDashboard:
             self.root.after(0, lambda: self._update_ui(report))
             
         except Exception as e:
+            print(f"데이터 가져오기 오류: {e}")
             self.root.after(0, lambda: messagebox.showerror("오류", f"데이터 로드 실패: {str(e)}"))
+    
+    def _generate_dummy_data(self):
+        """테스트용 더미 데이터 생성"""
+        import random
+        
+        sample_keywords = [
+            "카페", "맛집", "여행", "vlog", "먹방", "게임", "음악", "리뷰", 
+            "튜토리얼", "운동", "요리", "패션", "뷰티", "일상", "챌린지",
+            "반려동물", "공부", "독서", "영화", "드라마", "K-pop", "축구",
+            "농구", "e스포츠", "주식", "부동산", "IT", "개발", "디자인", "예술"
+        ]
+        
+        report = {
+            'analysis_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'region': self.region_var.get(),
+            'total_videos_analyzed': 140,
+            'total_keywords_found': len(sample_keywords),
+            'top_trending_keywords': []
+        }
+        
+        for i, keyword in enumerate(sample_keywords[:30], 1):
+            views = random.randint(10000, 1000000)
+            frequency = random.randint(5, 50)
+            
+            keyword_info = {
+                'rank': i,
+                'keyword': keyword,
+                'trend_score': round(random.uniform(1.0, 100.0), 2),
+                'frequency': frequency,
+                'avg_views': f"{views:,}",
+                'total_views': f"{views * frequency:,}",
+                'related_keywords': random.sample([k for k in sample_keywords if k != keyword], 5),
+                'top_videos': [
+                    {
+                        'title': f"{keyword} 관련 인기 영상 {j+1}",
+                        'views': f"{random.randint(10000, 500000):,}",
+                        'channel': f"{keyword} 채널 {j+1}"
+                    } for j in range(3)
+                ]
+            }
+            
+            # 랜덤하게 상태 부여
+            status_options = ['new', 'up', 'down', 'same']
+            keyword_info['status'] = random.choice(status_options)
+            if keyword_info['status'] in ['up', 'down']:
+                keyword_info['rank_change'] = random.randint(1, 5)
+            else:
+                keyword_info['rank_change'] = 0
+            
+            report['top_trending_keywords'].append(keyword_info)
+        
+        return report
     
     def _compare_trends(self, new_trends):
         """트렌드 변화 감지"""
@@ -422,7 +500,8 @@ def main():
     root = tk.Tk()
     
     # API 키 입력
-    api_key = tk.simpledialog.askstring("API Key", "YouTube API Key를 입력하세요:")
+    import tkinter.simpledialog as simpledialog
+    api_key = simpledialog.askstring("API Key", "YouTube API Key를 입력하세요:")
     if not api_key:
         return
     
@@ -432,5 +511,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import tkinter.simpledialog as simpledialog
     main()
