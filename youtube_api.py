@@ -60,9 +60,9 @@ class YouTubeAPIClient:
     
     def search_videos_by_keyword(self, keyword, region_code="KR", max_results=200, 
                                 max_subscriber_count=None, min_view_count=None, period_days=30,
-                                video_type="all"):
+                                video_type="all", order="relevance"):  # order 매개변수 추가
         """
-        키워드로 영상 검색 (구독자 수, 조회수, 영상 유형 필터 포함) - 수정된 버전
+        키워드로 영상 검색 (구독자 수, 조회수, 영상 유형, 정렬 기준 필터 포함)
         
         Args:
             keyword (str): 검색 키워드
@@ -72,11 +72,13 @@ class YouTubeAPIClient:
             min_view_count (int): 최소 조회수
             period_days (int): 검색 기간 (일)
             video_type (str): 영상 유형 ("all", "long", "shorts")
+            order (str): 정렬 기준 ("relevance", "date", "viewCount")
         """
         print(f"\n🔍 키워드 검색 시작")
         print(f"   키워드: '{keyword}'")
         print(f"   지역: {region_code}")
         print(f"   영상 유형: {video_type}")
+        print(f"   정렬 기준: {order}")
         print(f"   기간: 최근 {period_days}일")
         print(f"   최대 구독자: {max_subscriber_count if max_subscriber_count else '제한 없음'}")
         print(f"   최소 조회수: {min_view_count if min_view_count else '제한 없음'}")
@@ -117,7 +119,7 @@ class YouTubeAPIClient:
                         part='snippet',
                         q=search_query,
                         type='video',
-                        order='date',
+                        order=order,  # 정렬 기준 적용
                         publishedAfter=published_after,
                         regionCode=region_code,
                         maxResults=50,  # 배치당 50개
@@ -183,8 +185,12 @@ class YouTubeAPIClient:
                 self._print_filter_suggestions(min_view_count, max_subscriber_count, period_days)
                 return []
             
-            # 최신순으로 정렬
-            filtered_videos.sort(key=lambda x: x['snippet']['publishedAt'], reverse=True)
+            # 정렬 기준에 따라 최종 정렬
+            if order == "viewCount":
+                filtered_videos.sort(key=lambda x: int(x['statistics'].get('viewCount', 0)), reverse=True)
+            elif order == "date":
+                filtered_videos.sort(key=lambda x: x['snippet']['publishedAt'], reverse=True)
+            # relevance는 API가 이미 정렬한 상태
             
             print(f"🎉 최종 결과: {len(filtered_videos)}개 영상 ({video_type} 유형)")
             return filtered_videos[:max_results]
