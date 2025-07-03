@@ -1,5 +1,5 @@
 """
-YouTube 트렌드 분석기 GUI - macOS 스타일 디자인
+YouTube 트렌드 분석기 GUI - macOS 스타일 디자인 (수정된 버전)
 - 세련된 macOS 스타일 UI
 - 채널 분석 기능
 - 대본/썸네일 다운로드
@@ -20,72 +20,6 @@ import config
 from youtube_api import YouTubeAPIClient
 from data_analyzer import DataAnalyzer
 from excel_generator import ExcelGenerator
-
-
-class ModernButton(tk.Canvas):
-    """macOS 스타일 버튼"""
-    def __init__(self, parent, text="", command=None, style="primary", **kwargs):
-        super().__init__(parent, highlightthickness=0, **kwargs)
-        
-        self.command = command
-        self.text = text
-        self.style = style
-        
-        # 스타일별 색상
-        self.colors = {
-            "primary": {"bg": "#007AFF", "hover": "#0051D5", "fg": "white"},
-            "secondary": {"bg": "#F2F2F7", "hover": "#E5E5EA", "fg": "#000000"},
-            "danger": {"bg": "#FF3B30", "hover": "#D70015", "fg": "white"}
-        }
-        
-        self.current_color = self.colors[style]["bg"]
-        self.draw_button()
-        
-        # 이벤트 바인딩
-        self.bind("<Enter>", self.on_hover)
-        self.bind("<Leave>", self.on_leave)
-        self.bind("<Button-1>", self.on_click)
-        self.bind("<ButtonRelease-1>", self.on_release)
-    
-    def draw_button(self):
-        self.delete("all")
-        width = self.winfo_reqwidth() or 100
-        height = self.winfo_reqheight() or 32
-        
-        # 둥근 모서리 버튼
-        self.create_rounded_rectangle(2, 2, width-2, height-2, 
-                                     radius=8, fill=self.current_color, 
-                                     outline="", tags="button")
-        
-        # 텍스트
-        self.create_text(width//2, height//2, text=self.text,
-                        fill=self.colors[self.style]["fg"],
-                        font=("SF Pro Display", 11, "bold"))
-    
-    def create_rounded_rectangle(self, x1, y1, x2, y2, radius=8, **kwargs):
-        points = []
-        for x, y in [(x1, y1 + radius), (x1, y1), (x1 + radius, y1),
-                     (x2 - radius, y1), (x2, y1), (x2, y1 + radius),
-                     (x2, y2 - radius), (x2, y2), (x2 - radius, y2),
-                     (x1 + radius, y2), (x1, y2), (x1, y2 - radius)]:
-            points.extend([x, y])
-        return self.create_polygon(points, smooth=True, **kwargs)
-    
-    def on_hover(self, event):
-        self.current_color = self.colors[self.style]["hover"]
-        self.draw_button()
-    
-    def on_leave(self, event):
-        self.current_color = self.colors[self.style]["bg"]
-        self.draw_button()
-    
-    def on_click(self, event):
-        self.move("all", 1, 1)
-    
-    def on_release(self, event):
-        self.move("all", -1, -1)
-        if self.command:
-            self.command()
 
 
 class ChannelAnalysisDialog(tk.Toplevel):
@@ -139,7 +73,7 @@ class ChannelAnalysisDialog(tk.Toplevel):
         header_frame.pack_propagate(False)
         
         tk.Label(header_frame, text=f"📺 {self.channel_name}",
-                font=("SF Pro Display", 18, "bold"),
+                font=("Arial", 18, "bold"),
                 bg="white", fg="#1D1D1F").pack(side=tk.LEFT, padx=20, pady=15)
         
         # 영상 목록
@@ -202,34 +136,34 @@ class ChannelAnalysisDialog(tk.Toplevel):
         select_frame = tk.Frame(button_container, bg="#F5F5F7")
         select_frame.pack(side=tk.LEFT, padx=10)
         
-        ModernButton(select_frame, text="모두 선택", 
-                    command=self.select_all, style="secondary",
-                    width=100, height=32).pack(side=tk.LEFT, padx=5)
+        tk.Button(select_frame, text="모두 선택", 
+                 command=self.select_all, bg="#F2F2F7", fg="black",
+                 font=('Arial', 11), borderwidth=0, padx=10, pady=5).pack(side=tk.LEFT, padx=5)
         
-        ModernButton(select_frame, text="모두 해제", 
-                    command=self.deselect_all, style="secondary",
-                    width=100, height=32).pack(side=tk.LEFT, padx=5)
+        tk.Button(select_frame, text="모두 해제", 
+                 command=self.deselect_all, bg="#F2F2F7", fg="black",
+                 font=('Arial', 11), borderwidth=0, padx=10, pady=5).pack(side=tk.LEFT, padx=5)
         
         # 다운로드 버튼들
         download_frame = tk.Frame(button_container, bg="#F5F5F7")
         download_frame.pack(side=tk.LEFT, padx=20)
         
-        ModernButton(download_frame, text="썸네일 다운로드", 
-                    command=self.download_thumbnails, style="primary",
-                    width=140, height=32).pack(side=tk.LEFT, padx=5)
+        tk.Button(download_frame, text="썸네일 다운로드", 
+                 command=self.download_thumbnails, bg="#007AFF", fg="white",
+                 font=('Arial', 11), borderwidth=0, padx=15, pady=5).pack(side=tk.LEFT, padx=5)
         
-        ModernButton(download_frame, text="대본 다운로드", 
-                    command=self.download_transcripts, style="primary",
-                    width=140, height=32).pack(side=tk.LEFT, padx=5)
+        tk.Button(download_frame, text="대본 다운로드", 
+                 command=self.download_transcripts, bg="#007AFF", fg="white",
+                 font=('Arial', 11), borderwidth=0, padx=15, pady=5).pack(side=tk.LEFT, padx=5)
         
         # 닫기 버튼
-        ModernButton(button_container, text="닫기", 
-                    command=self.destroy, style="secondary",
-                    width=80, height=32).pack(side=tk.RIGHT, padx=10)
+        tk.Button(button_container, text="닫기", 
+                 command=self.destroy, bg="#F2F2F7", fg="black",
+                 font=('Arial', 11), borderwidth=0, padx=20, pady=5).pack(side=tk.RIGHT, padx=10)
         
         # 진행 상태
         self.progress_label = tk.Label(self, text="", 
-                                     font=("SF Pro Display", 11),
+                                     font=("Arial", 11),
                                      bg="#F5F5F7", fg="#86868B")
         self.progress_label.pack(pady=5)
     
@@ -439,7 +373,7 @@ class ImprovedYouTubeAnalyzerGUI:
         self.root.title("YouTube DeepSearch - 콘텐츠 분석 툴")
         self.root.geometry("1300x850")
         
-        # macOS 스타일 색상
+        # macOS 스타일 색상 - 먼저 정의
         self.bg_color = "#F5F5F7"
         self.card_bg = "#FFFFFF"
         self.sidebar_bg = "#F2F2F7"
@@ -449,8 +383,26 @@ class ImprovedYouTubeAnalyzerGUI:
         
         self.root.configure(bg=self.bg_color)
         
-        # 스타일 설정
-        self.setup_styles()
+        # 매핑 딕셔너리들 정의
+        self.sort_mapping = {
+            "관련성": "relevance",
+            "업로드 날짜": "date",
+            "조회수": "viewCount"
+        }
+        
+        self.period_mapping = {
+            "오늘": "1",
+            "2일": "2",
+            "일주일": "7",
+            "한달": "30",
+            "3개월": "90"
+        }
+        
+        self.type_mapping = {
+            "전체": "all",
+            "쇼츠": "shorts",
+            "롱폼": "long"
+        }
         
         # 분석 관련 객체들
         self.api_client = None
@@ -466,6 +418,9 @@ class ImprovedYouTubeAnalyzerGUI:
         
         # 빠른 모드 옵션
         self.fast_mode = tk.BooleanVar(value=True)
+        
+        # 스타일 설정
+        self.setup_styles()
         
         # GUI 구성
         self.create_widgets()
@@ -485,57 +440,26 @@ class ImprovedYouTubeAnalyzerGUI:
                        borderwidth=0,
                        focuscolor='none')
         
-        # 엔트리 스타일
-        style.configure('Modern.TEntry',
-                       fieldbackground='white',
-                       borderwidth=0,
-                       insertwidth=2,
-                       relief='flat',
-                       font=('SF Pro Display', 12))
-        
-        # 콤보박스 스타일
-        style.configure('Modern.TCombobox',
-                       fieldbackground='white',
-                       borderwidth=0,
-                       relief='flat',
-                       arrowcolor=self.accent_color,
-                       font=('SF Pro Display', 12))
-        
-        # 라벨프레임 스타일
-        style.configure('Card.TLabelframe',
-                       background=self.card_bg,
-                       borderwidth=0,
-                       relief='flat',
-                       font=('SF Pro Display', 11, 'bold'))
-        style.configure('Card.TLabelframe.Label',
-                       background=self.card_bg,
-                       foreground=self.text_primary)
-        
         # 트리뷰 스타일
         style.configure("Modern.Treeview",
                        background="white",
                        foreground=self.text_primary,
                        fieldbackground="white",
                        borderwidth=0,
-                       font=('SF Pro Display', 11))
+                       font=('Arial', 11))
         style.configure("Modern.Treeview.Heading",
                        background=self.sidebar_bg,
                        foreground=self.text_primary,
                        borderwidth=0,
                        relief="flat",
-                       font=('SF Pro Display', 11, 'bold'))
+                       font=('Arial', 11, 'bold'))
         style.map("Modern.Treeview",
                  background=[('selected', self.accent_color)],
                  foreground=[('selected', 'white')])
     
     def create_card_frame(self, parent, **kwargs):
         """카드 스타일 프레임 생성"""
-        frame = tk.Frame(parent, bg=self.card_bg, **kwargs)
-        
-        # 그림자 효과 (간단한 방식)
-        shadow = tk.Frame(parent, bg="#E5E5E7", height=2)
-        shadow.place(in_=frame, x=2, y=2, relwidth=1, relheight=1)
-        
+        frame = tk.Frame(parent, bg=self.card_bg, relief='flat', bd=1, **kwargs)
         return frame
     
     def create_widgets(self):
@@ -548,14 +472,14 @@ class ImprovedYouTubeAnalyzerGUI:
         main_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
         
         # 왼쪽 사이드바 (설정)
-        sidebar = self.create_card_frame(main_container, width=320)
+        sidebar = self.create_card_frame(main_container, width=320, relief='solid', bd=1)
         sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 20))
         sidebar.pack_propagate(False)
         
         self.create_filters_section(sidebar)
         
         # 오른쪽 메인 영역 (결과)
-        main_area = self.create_card_frame(main_container)
+        main_area = self.create_card_frame(main_container, relief='solid', bd=1)
         main_area.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
         self.create_results_section(main_area)
@@ -574,11 +498,11 @@ class ImprovedYouTubeAnalyzerGUI:
         title_frame.pack(side=tk.LEFT, padx=30, pady=20)
         
         tk.Label(title_frame, text="YouTube", 
-                font=("SF Pro Display", 24, "bold"),
+                font=("Arial", 24, "bold"),
                 bg=self.card_bg, fg=self.text_primary).pack(side=tk.LEFT)
         
         tk.Label(title_frame, text="DeepSearch", 
-                font=("SF Pro Display", 24),
+                font=("Arial", 24),
                 bg=self.card_bg, fg=self.accent_color).pack(side=tk.LEFT, padx=(5, 0))
         
         # API 키 섹션
@@ -586,18 +510,18 @@ class ImprovedYouTubeAnalyzerGUI:
         api_frame.pack(side=tk.RIGHT, padx=30, pady=20)
         
         tk.Label(api_frame, text="API Key", 
-                font=("SF Pro Display", 11),
+                font=("Arial", 11),
                 bg=self.card_bg, fg=self.text_secondary).pack(side=tk.LEFT, padx=(0, 10))
         
-        self.api_entry = ttk.Entry(api_frame, font=('SF Pro Display', 11), 
-                                  style='Modern.TEntry', width=35, show="*")
+        self.api_entry = tk.Entry(api_frame, font=('Arial', 11), 
+                                 width=35, show="*")
         self.api_entry.pack(side=tk.LEFT, padx=(0, 10))
         
         # 빠른 모드
         self.fast_mode_check = tk.Checkbutton(api_frame, text="빠른 분석",
                                              variable=self.fast_mode,
                                              bg=self.card_bg, fg=self.text_secondary,
-                                             font=('SF Pro Display', 11),
+                                             font=('Arial', 11),
                                              activebackground=self.card_bg,
                                              highlightthickness=0)
         self.fast_mode_check.pack(side=tk.LEFT)
@@ -605,13 +529,19 @@ class ImprovedYouTubeAnalyzerGUI:
     def create_filters_section(self, parent):
         """필터 설정 섹션"""
         # 섹션 타이틀
-        tk.Label(parent, text="검색 필터",
-                font=('SF Pro Display', 16, 'bold'),
-                bg=self.card_bg, fg=self.text_primary).pack(pady=(20, 15), padx=20)
+        title_label = tk.Label(parent, text="검색 필터",
+                font=('Arial', 16, 'bold'),
+                bg=self.card_bg, fg=self.text_primary)
+        title_label.pack(pady=(20, 15), padx=20)
         
         # 필터 컨테이너
         filters_container = tk.Frame(parent, bg=self.card_bg)
         filters_container.pack(fill=tk.BOTH, expand=True, padx=20)
+        
+        # 디버깅용 테스트 라벨
+        test_label = tk.Label(filters_container, text="필터 섹션이 로드되었습니다.", 
+                             bg=self.card_bg, fg="red", font=('Arial', 12, 'bold'))
+        test_label.pack(pady=10)
         
         # 검색 키워드
         self.create_filter_group(filters_container, "검색 키워드", "entry")
@@ -650,32 +580,41 @@ class ImprovedYouTubeAnalyzerGUI:
         button_container = tk.Frame(parent, bg=self.card_bg)
         button_container.pack(fill=tk.X, side=tk.BOTTOM, pady=20, padx=20)
         
-        self.search_button = ModernButton(button_container, text="검색 시작",
-                                        command=self.start_analysis, style="primary",
-                                        width=280, height=44)
-        self.search_button.pack()
+        self.search_button = tk.Button(button_container, text="검색 시작",
+                                     command=self.start_analysis,
+                                     bg=self.accent_color, fg="white",
+                                     font=('Arial', 12, 'bold'),
+                                     borderwidth=0, pady=10)
+        self.search_button.pack(fill=tk.X)
     
     def create_filter_group(self, parent, label, widget_type, **kwargs):
         """필터 그룹 생성"""
         group = tk.Frame(parent, bg=self.card_bg)
         group.pack(fill=tk.X, pady=(0, 15))
         
-        tk.Label(group, text=label,
-                font=('SF Pro Display', 11),
-                bg=self.card_bg, fg=self.text_secondary).pack(anchor=tk.W, pady=(0, 5))
+        label_widget = tk.Label(group, text=label,
+                font=('Arial', 11),
+                bg=self.card_bg, fg=self.text_secondary)
+        label_widget.pack(anchor=tk.W, pady=(0, 5))
         
         if widget_type == "entry":
-            self.keyword_entry = ttk.Entry(group, font=('SF Pro Display', 12),
-                                         style='Modern.TEntry')
+            self.keyword_entry = tk.Entry(group, font=('Arial', 12),
+                                         relief='flat', bd=1)
             self.keyword_entry.pack(fill=tk.X, ipady=6)
             self.keyword_entry.insert(0, "서울 카페")
             
         elif widget_type == "combo":
-            combo = ttk.Combobox(group, textvariable=kwargs.get('variable'),
-                               values=kwargs.get('values', []),
-                               state="readonly", font=('SF Pro Display', 12),
-                               style='Modern.TCombobox')
+            values = kwargs.get('values', [])
+            variable = kwargs.get('variable')
+            
+            combo = ttk.Combobox(group, textvariable=variable,
+                               values=values,
+                               state="readonly", font=('Arial', 12))
             combo.pack(fill=tk.X, ipady=6)
+            
+            # 기본값 설정
+            if variable and values:
+                variable.set(values[0])
     
     def create_results_section(self, parent):
         """결과 표시 섹션"""
@@ -685,11 +624,11 @@ class ImprovedYouTubeAnalyzerGUI:
         header_frame.pack_propagate(False)
         
         tk.Label(header_frame, text="검색 결과", 
-                font=('SF Pro Display', 16, 'bold'),
+                font=('Arial', 16, 'bold'),
                 bg=self.card_bg, fg=self.text_primary).pack(side=tk.LEFT, padx=20, pady=15)
         
         self.results_count_label = tk.Label(header_frame, text="", 
-                                           font=('SF Pro Display', 12),
+                                           font=('Arial', 12),
                                            bg=self.card_bg, fg=self.text_secondary)
         self.results_count_label.pack(side=tk.RIGHT, padx=20, pady=15)
         
@@ -730,7 +669,7 @@ class ImprovedYouTubeAnalyzerGUI:
         
         # 진행 상태
         self.progress_label = tk.Label(parent, text="", 
-                                      font=('SF Pro Display', 11),
+                                      font=('Arial', 11),
                                       bg=self.card_bg, fg=self.text_secondary)
         self.progress_label.pack(pady=(0, 10))
     
@@ -746,74 +685,19 @@ class ImprovedYouTubeAnalyzerGUI:
         
         # 액션 버튼들
         actions = [
-            ("채널 분석", self.analyze_channel, "primary"),
-            ("엑셀 추출", self.export_excel, "secondary"),
-            ("영상 열기", self.open_video, "secondary"),
-            ("썸네일 다운로드", self.download_thumbnails, "secondary")
+            ("채널 분석", self.analyze_channel),
+            ("엑셀 추출", self.export_excel),
+            ("영상 열기", self.open_video),
+            ("썸네일 다운로드", self.download_thumbnails)
         ]
         
-        for text, command, style in actions:
-            ModernButton(button_container, text=text, command=command, 
-                        style=style, width=120, height=36).pack(side=tk.LEFT, padx=5)
+        for text, command in actions:
+            btn = tk.Button(button_container, text=text, command=command,
+                           bg=self.accent_color, fg="white",
+                           font=('Arial', 11, 'bold'),
+                           borderwidth=0, pady=8, padx=15)
+            btn.pack(side=tk.LEFT, padx=5)
     
-    # 나머지 메서드들은 기존과 동일하되, 일부 수정 필요한 부분만 변경
-    
-    def analyze_channel(self):
-        """선택한 영상의 채널 분석"""
-        selection = self.tree.selection()
-        if not selection:
-            messagebox.showwarning("알림", "채널을 분석할 영상을 선택해주세요.")
-            return
-        
-        # 첫 번째 선택 항목의 채널 정보
-        item = selection[0]
-        index = int(self.tree.item(item)['values'][0]) - 1
-        
-        if 0 <= index < len(self.analyzed_videos):
-            video = self.analyzed_videos[index]
-            channel_id = video['snippet']['channelId']
-            channel_name = video['snippet']['channelTitle']
-            
-            # 채널 분석 다이얼로그 열기
-            dialog = ChannelAnalysisDialog(self.root, channel_id, channel_name, self.api_client)
-            dialog.transient(self.root)
-            dialog.grab_set()
-    
-    # 매핑 딕셔너리들
-    def __init__(self, root):
-        # ... 기존 __init__ 코드 ...
-        
-        # 매핑 추가
-        self.sort_mapping = {
-            "관련성": "relevance",
-            "업로드 날짜": "date",
-            "조회수": "viewCount"
-        }
-        
-        self.period_mapping = {
-            "오늘": "1",
-            "2일": "2",
-            "일주일": "7",
-            "한달": "30",
-            "3개월": "90"
-        }
-        
-        self.type_mapping = {
-            "전체": "all",
-            "쇼츠": "shorts",
-            "롱폼": "long"
-        }
-        
-        # 나머지 초기화 코드
-        super().__init__()
-        self.root = root
-        # ... 나머지 설정 ...
-        
-        # GUI 구성
-        self.create_widgets()
-        self.load_api_key()
-    
-    # 기존 메서드들 유지 (load_api_key, save_api_key, start_analysis 등)
     def load_api_key(self):
         """API 키 자동 로드"""
         if config.DEVELOPER_KEY and config.DEVELOPER_KEY != "YOUR_YOUTUBE_API_KEY_HERE":
@@ -839,7 +723,7 @@ class ImprovedYouTubeAnalyzerGUI:
             return
         
         # 버튼 비활성화
-        self.search_button.configure(state=tk.DISABLED)
+        self.search_button.configure(state='disabled', text="검색 중...")
         self.progress_label.config(text="검색 중...")
         
         # 기존 결과 초기화
@@ -879,7 +763,6 @@ class ImprovedYouTubeAnalyzerGUI:
             'fast_mode': self.fast_mode.get()
         }
     
-    # 나머지 메서드들 (run_fast_analysis, quick_analyze_videos 등) 동일하게 유지
     def run_fast_analysis(self, settings):
         """빠른 분석 실행"""
         try:
@@ -1066,7 +949,7 @@ class ImprovedYouTubeAnalyzerGUI:
         # 결과 수 업데이트
         self.results_count_label.config(text=f"총 {len(videos)}개")
         self.progress_label.config(text="분석 완료!")
-        self.search_button.configure(state=tk.NORMAL)
+        self.search_button.configure(state='normal', text="검색 시작")
     
     def on_video_double_click(self, event):
         """영상 더블클릭"""
@@ -1079,6 +962,27 @@ class ImprovedYouTubeAnalyzerGUI:
                 video_id = self.analyzed_videos[index]['id']
                 url = f"https://www.youtube.com/watch?v={video_id}"
                 webbrowser.open(url)
+    
+    def analyze_channel(self):
+        """선택한 영상의 채널 분석"""
+        selection = self.tree.selection()
+        if not selection:
+            messagebox.showwarning("알림", "채널을 분석할 영상을 선택해주세요.")
+            return
+        
+        # 첫 번째 선택 항목의 채널 정보
+        item = selection[0]
+        index = int(self.tree.item(item)['values'][0]) - 1
+        
+        if 0 <= index < len(self.analyzed_videos):
+            video = self.analyzed_videos[index]
+            channel_id = video['snippet']['channelId']
+            channel_name = video['snippet']['channelTitle']
+            
+            # 채널 분석 다이얼로그 열기
+            dialog = ChannelAnalysisDialog(self.root, channel_id, channel_name, self.api_client)
+            dialog.transient(self.root)
+            dialog.grab_set()
     
     def export_excel(self):
         """엑셀 내보내기"""
