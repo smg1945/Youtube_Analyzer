@@ -1,5 +1,5 @@
 """
-YouTube 트렌드 분석기 GUI - 채널 분석 기능 추가 버전 (완전 수정판)
+YouTube 트렌드 분석기 GUI - 오류 수정 버전
 """
 
 import tkinter as tk
@@ -17,934 +17,11 @@ from data_analyzer import DataAnalyzer
 from excel_generator import ExcelGenerator
 
 
-class EnhancedChannelAnalysisDialog(tk.Toplevel):
-    """향상된 채널 분석 다이얼로그 - 직접 입력된 채널 분석용"""
-    def __init__(self, parent, channel_id, channel_name, api_client, max_videos=50, sort_order="date"):
-        super().__init__(parent)
-        
-        self.title(f"채널 분석 - {channel_name}")
-        self.geometry("1200x800")
-        self.configure(bg="#f0f0f0")
-        
-        self.channel_id = channel_id
-        self.channel_name = channel_name
-        self.api_client = api_client
-        self.max_videos = max_videos
-        self.sort_order = sort_order
-        self.channel_videos = []
-        self.channel_info = {}
-        self.selected_items = set()
-        
-        # UI 생성
-        self.create_widgets()
-        
-        # 채널 정보 및 영상 로드
-        self.load_channel_data()
-    
-    def create_widgets(self):
-        """위젯 생성"""
-        # 상단 헤더 (채널 정보)
-        header_frame = tk.Frame(self, bg="white", height=120, relief='solid', bd=1)
-        header_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
-        header_frame.pack_propagate(False)
-        
-        # 채널 기본 정보
-        info_frame = tk.Frame(header_frame, bg="white")
-        info_frame.pack(side=tk.LEFT, fill=tk.Y, padx=20, pady=10)
-        
-        self.channel_title_label = tk.Label(info_frame, text=f"📺 {self.channel_name}",
-                                           font=("Arial", 18, "bold"),
-                                           bg="white", fg="#333333")
-        self.channel_title_label.pack(anchor=tk.W)
-        
-        self.channel_stats_label = tk.Label(info_frame, text="정보를 불러오는 중...",
-                                           font=("Arial", 12),
-                                           bg="white", fg="#666666")
-        self.channel_stats_label.pack(anchor=tk.W, pady=(5, 0))
-        
-        self.channel_description_label = tk.Label(info_frame, text="",
-                                                 font=("Arial", 10),
-                                                 bg="white", fg="#888888",
-                                                 wraplength=600, justify=tk.LEFT)
-        self.channel_description_label.pack(anchor=tk.W, pady=(5, 0))
-        
-        # 분석 통계 (오른쪽)
-        stats_frame = tk.Frame(header_frame, bg="white")
-        stats_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=20, pady=10)
-        
-        tk.Label(stats_frame, text="📊 분석 통계",
-                font=("Arial", 14, "bold"),
-                bg="white", fg="#333333").pack()
-        
-        self.analysis_stats_frame = tk.Frame(stats_frame, bg="white")
-        self.analysis_stats_frame.pack(pady=10)
-        
-        # 영상 목록 프레임
-        list_frame = tk.Frame(self, bg="white", relief='solid', bd=1)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        # 상단 컨트롤
-        control_frame = tk.Frame(list_frame, bg="white", height=40)
-        control_frame.pack(fill=tk.X, padx=20, pady=(10, 0))
-        control_frame.pack_propagate(False)
-        
-        tk.Label(control_frame, text="📹 채널 영상 목록",
-                font=("Arial", 14, "bold"),
-                bg="white", fg="#333333").pack(side=tk.LEFT, pady=10)
-        
-        self.video_count_label = tk.Label(control_frame, text="",
-                                         font=("Arial", 12),
-                                         bg="white", fg="#666666")
-        self.video_count_label.pack(side=tk.RIGHT, pady=10)
-        
-        # 트리뷰
-        columns = ("선택", "순위", "업로드일", "제목", "조회수", "좋아요", "댓글수", "영상유형", "길이", "성과점수")
-        
-        self.tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=15)
-        
-        # 컬럼 설정
-        column_widths = {
-            "선택": 50,
-            "순위": 50,
-            "업로드일": 100,
-            "제목": 300,
-            "조회수": 100,
-            "좋아요": 80,
-            "댓글수": 80,
-            "영상유형": 80,
-            "길이": 80,
-            "성과점수": 100
-        }
-        
-        for col in columns:
-            if col == "선택":
-                self.tree.heading(col, text=col)  # 선택 컬럼은 정렬 안함
-            else:
-                self.tree.heading(col, text=col, command=lambda c=col: self.sort_channel_treeview(c))
-            self.tree.column(col, width=column_widths.get(col, 100))
-        
-        # 정렬 상태 추적
-        self.channel_sort_reverse = {}
-        
-        # 스크롤바
-        vsb = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=vsb.set)
-        
-        hsb = ttk.Scrollbar(list_frame, orient="horizontal", command=self.tree.xview)
-        self.tree.configure(xscrollcommand=hsb.set)
-        
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=20, pady=20)
-        vsb.pack(side=tk.RIGHT, fill=tk.Y, pady=20)
-        hsb.pack(side=tk.BOTTOM, fill=tk.X, padx=20)
-        
-        # 클릭 이벤트
-        self.tree.bind("<Button-1>", self.on_item_click)
-        self.tree.bind("<Double-1>", self.on_video_double_click)
-        
-        # 버튼 프레임
-        button_frame = tk.Frame(self, bg="#f0f0f0", height=80, relief='solid', bd=1)
-        button_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
-        button_frame.pack_propagate(False)
-        
-        # 버튼 컨테이너
-        button_container = tk.Frame(button_frame, bg="#f0f0f0")
-        button_container.pack(expand=True)
-        
-        # 선택 버튼들
-        tk.Button(button_container, text="모두 선택", 
-                 command=self.select_all, bg="#e0e0e0", fg="black",
-                 font=('Arial', 11), padx=10, pady=5).pack(side=tk.LEFT, padx=5)
-        
-        tk.Button(button_container, text="모두 해제", 
-                 command=self.deselect_all, bg="#e0e0e0", fg="black",
-                 font=('Arial', 11), padx=10, pady=5).pack(side=tk.LEFT, padx=5)
-        
-        tk.Button(button_container, text="상위 10개 선택", 
-                 command=self.select_top_10, bg="#e0e0e0", fg="black",
-                 font=('Arial', 11), padx=10, pady=5).pack(side=tk.LEFT, padx=5)
-        
-        # 다운로드 버튼들
-        tk.Button(button_container, text="썸네일 다운로드", 
-                 command=self.download_thumbnails, bg="#007AFF", fg="white",
-                 font=('Arial', 11, 'bold'), padx=15, pady=5).pack(side=tk.LEFT, padx=20)
-        
-        tk.Button(button_container, text="대본 다운로드", 
-                 command=self.download_transcripts, bg="#007AFF", fg="white",
-                 font=('Arial', 11, 'bold'), padx=15, pady=5).pack(side=tk.LEFT, padx=5)
-        
-        tk.Button(button_container, text="엑셀 추출", 
-                 command=self.export_to_excel, bg="#28A745", fg="white",
-                 font=('Arial', 11, 'bold'), padx=15, pady=5).pack(side=tk.LEFT, padx=5)
-        
-        # 닫기 버튼
-        tk.Button(button_container, text="닫기", 
-                 command=self.destroy, bg="#e0e0e0", fg="black",
-                 font=('Arial', 11), padx=20, pady=5).pack(side=tk.RIGHT, padx=10)
-        
-        # 진행 상태
-        self.progress_label = tk.Label(self, text="", 
-                                     font=("Arial", 11),
-                                     bg="#f0f0f0", fg="#666666")
-        self.progress_label.pack(pady=5)
-    
-    def load_channel_data(self):
-        """채널 정보 및 영상 로드"""
-        self.progress_label.config(text="채널 정보를 불러오는 중...")
-        
-        thread = threading.Thread(target=self._fetch_channel_data)
-        thread.daemon = True
-        thread.start()
-    
-    def _fetch_channel_data(self):
-        """채널 정보 및 영상 가져오기"""
-        try:
-            # 1. 채널 기본 정보 가져오기
-            channel_info = self.api_client.get_channel_info(self.channel_id)
-            if channel_info:
-                self.channel_info = channel_info
-                self.after(0, self._update_channel_info)
-            
-            # 2. 채널 영상 가져오기
-            videos = self.api_client.get_channel_videos(
-                self.channel_id, 
-                max_results=self.max_videos,
-                order=self.sort_order
-            )
-            self.channel_videos = videos
-            
-            # 3. 분석 수행
-            analyzed_videos = self._analyze_videos(videos)
-            self.channel_videos = analyzed_videos
-            
-            # UI 업데이트
-            self.after(0, self._display_videos)
-            self.after(0, self._update_analysis_stats)
-            
-        except Exception as e:
-            self.after(0, lambda: messagebox.showerror("오류", f"채널 데이터 로드 실패: {str(e)}"))
-    
-    def _update_channel_info(self):
-        """채널 정보 업데이트"""
-        if not self.channel_info:
-            return
-        
-        snippet = self.channel_info['snippet']
-        stats = self.channel_info.get('statistics', {})
-        
-        # 채널 제목 업데이트
-        self.channel_title_label.config(text=f"📺 {snippet['title']}")
-        
-        # 통계 정보
-        subscriber_count = int(stats.get('subscriberCount', 0))
-        video_count = int(stats.get('videoCount', 0))
-        view_count = int(stats.get('viewCount', 0))
-        
-        stats_text = f"구독자: {subscriber_count:,}명 | 영상: {video_count:,}개 | 총 조회수: {view_count:,}"
-        self.channel_stats_label.config(text=stats_text)
-        
-        # 설명
-        description = snippet.get('description', '')[:200]
-        if len(snippet.get('description', '')) > 200:
-            description += "..."
-        self.channel_description_label.config(text=description)
-    
-    def _analyze_videos(self, videos):
-        """영상들 분석"""
-        if not videos:
-            return []
-        
-        # 채널 평균 통계 계산
-        view_counts = [video.get('view_count', 0) for video in videos]
-        like_counts = [video.get('like_count', 0) for video in videos]
-        comment_counts = [video.get('comment_count', 0) for video in videos]
-        
-        avg_views = sum(view_counts) / len(view_counts) if view_counts else 1
-        avg_likes = sum(like_counts) / len(like_counts) if like_counts else 1
-        avg_comments = sum(comment_counts) / len(comment_counts) if comment_counts else 1
-        
-        # 각 영상 분석
-        for i, video in enumerate(videos):
-            # 성과 점수 계산 (채널 평균 대비)
-            views = video.get('view_count', 0)
-            likes = video.get('like_count', 0)
-            comments = video.get('comment_count', 0)
-            
-            view_score = (views / avg_views) if avg_views > 0 else 0
-            like_score = (likes / avg_likes) if avg_likes > 0 else 0
-            comment_score = (comments / avg_comments) if avg_comments > 0 else 0
-            
-            # 가중 평균 (조회수 50%, 좋아요 30%, 댓글 20%)
-            performance_score = (view_score * 0.5 + like_score * 0.3 + comment_score * 0.2)
-            
-            video['performance_score'] = round(performance_score, 2)
-            video['rank'] = i + 1
-            
-            # 영상 유형
-            duration_seconds = self.api_client.parse_duration(video.get('duration', 'PT0S'))
-            video['video_type'] = "쇼츠" if duration_seconds <= 60 else "롱폼"
-            video['duration_seconds'] = duration_seconds
-        
-        return videos
-    
-    def _update_analysis_stats(self):
-        """분석 통계 업데이트"""
-        if not self.channel_videos:
-            return
-        
-        # 기존 통계 위젯 제거
-        for widget in self.analysis_stats_frame.winfo_children():
-            widget.destroy()
-        
-        # 영상 유형별 통계
-        shorts_count = sum(1 for v in self.channel_videos if v.get('video_type') == '쇼츠')
-        long_count = sum(1 for v in self.channel_videos if v.get('video_type') == '롱폼')
-        
-        # 성과 통계
-        avg_performance = sum(v.get('performance_score', 0) for v in self.channel_videos) / len(self.channel_videos)
-        top_performers = sum(1 for v in self.channel_videos if v.get('performance_score', 0) > 2.0)
-        
-        # 통계 표시
-        stats_info = [
-            ("분석 영상", f"{len(self.channel_videos)}개"),
-            ("쇼츠", f"{shorts_count}개"),
-            ("롱폼", f"{long_count}개"),
-            ("평균 성과", f"{avg_performance:.1f}x"),
-            ("고성과 영상", f"{top_performers}개")
-        ]
-        
-        for i, (label, value) in enumerate(stats_info):
-            row_frame = tk.Frame(self.analysis_stats_frame, bg="white")
-            row_frame.pack(fill=tk.X, pady=2)
-            
-            tk.Label(row_frame, text=f"{label}:",
-                    font=("Arial", 10),
-                    bg="white", fg="#666666",
-                    width=10, anchor="w").pack(side=tk.LEFT)
-            
-            tk.Label(row_frame, text=value,
-                    font=("Arial", 10, "bold"),
-                    bg="white", fg="#333333").pack(side=tk.LEFT)
-    
-    def _display_videos(self):
-        """영상 목록 표시"""
-        for video in self.channel_videos:
-            # 날짜 포맷
-            upload_date = video.get('published_at', '')[:10]
-            
-            # 조회수/좋아요/댓글 포맷
-            views = f"{video.get('view_count', 0):,}"
-            likes = f"{video.get('like_count', 0):,}"
-            comments = f"{video.get('comment_count', 0):,}"
-            
-            # 영상 유형과 길이
-            video_type = video.get('video_type', '알수없음')
-            duration = self.format_duration(video.get('duration_seconds', 0))
-            
-            # 성과 점수
-            performance = f"{video.get('performance_score', 0):.1f}x"
-            
-            # 제목 (길이 제한)
-            title = video['title']
-            if len(title) > 35:
-                title = title[:35] + "..."
-            
-            # 트리에 추가
-            item = self.tree.insert("", tk.END, 
-                                   values=("☐", video.get('rank', 0), upload_date, title,
-                                          views, likes, comments, video_type, duration, performance))
-        
-        # 상태 업데이트
-        self.video_count_label.config(text=f"총 {len(self.channel_videos)}개 영상")
-        self.progress_label.config(text="✅ 채널 분석 완료!")
-    
-    def format_duration(self, seconds):
-        """초를 시:분:초 형식으로 변환"""
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        secs = seconds % 60
-        
-        if hours > 0:
-            return f"{hours}:{minutes:02d}:{secs:02d}"
-        else:
-            return f"{minutes}:{secs:02d}"
-    
-    def on_item_click(self, event):
-        """아이템 클릭 처리"""
-        region = self.tree.identify_region(event.x, event.y)
-        if region == "cell":
-            item = self.tree.identify_row(event.y)
-            column = self.tree.identify_column(event.x)
-            
-            # 선택 컬럼 클릭 시 체크박스 토글
-            if item and column == "#1":  # 첫 번째 컬럼
-                if item in self.selected_items:
-                    self.selected_items.remove(item)
-                    values = list(self.tree.item(item)['values'])
-                    values[0] = "☐"
-                    self.tree.item(item, values=values)
-                else:
-                    self.selected_items.add(item)
-                    values = list(self.tree.item(item)['values'])
-                    values[0] = "☑"
-                    self.tree.item(item, values=values)
-    
-    def on_video_double_click(self, event):
-        """영상 더블클릭 - YouTube에서 열기"""
-        item = self.tree.identify_row(event.y)
-        if item and item not in self.selected_items:  # 선택 컬럼이 아닌 경우
-            try:
-                item_values = self.tree.item(item)['values']
-                rank = int(item_values[1]) - 1  # 순위에서 인덱스로 변환
-                
-                if 0 <= rank < len(self.channel_videos):
-                    video_id = self.channel_videos[rank]['id']
-                    url = f"https://www.youtube.com/watch?v={video_id}"
-                    webbrowser.open(url)
-            except Exception as e:
-                print(f"영상 열기 오류: {e}")
-    
-    def select_all(self):
-        """모두 선택"""
-        for item in self.tree.get_children():
-            self.selected_items.add(item)
-            values = list(self.tree.item(item)['values'])
-            values[0] = "☑"
-            self.tree.item(item, values=values)
-    
-    def deselect_all(self):
-        """모두 해제"""
-        for item in self.tree.get_children():
-            if item in self.selected_items:
-                self.selected_items.remove(item)
-            values = list(self.tree.item(item)['values'])
-            values[0] = "☐"
-            self.tree.item(item, values=values)
-    
-    def select_top_10(self):
-        """상위 10개 선택"""
-        self.deselect_all()
-        
-        # 성과 점수 기준으로 정렬된 아이템들 가져오기
-        items_with_scores = []
-        for item in self.tree.get_children():
-            values = self.tree.item(item)['values']
-            performance_score = float(values[9].replace('x', ''))  # 성과점수 컬럼
-            items_with_scores.append((item, performance_score))
-        
-        # 성과 점수로 정렬
-        items_with_scores.sort(key=lambda x: x[1], reverse=True)
-        
-        # 상위 10개 선택
-        for i, (item, score) in enumerate(items_with_scores[:10]):
-            self.selected_items.add(item)
-            values = list(self.tree.item(item)['values'])
-            values[0] = "☑"
-            self.tree.item(item, values=values)
-    
-    def download_thumbnails(self):
-        """선택한 영상의 썸네일 다운로드"""
-        if not self.selected_items:
-            messagebox.showwarning("알림", "다운로드할 영상을 선택해주세요.")
-            return
-        
-        # 선택된 영상 정보 수집
-        thumbnails_to_download = []
-        for item in self.selected_items:
-            item_values = self.tree.item(item)['values']
-            rank = int(item_values[1]) - 1
-            
-            if 0 <= rank < len(self.channel_videos):
-                video = self.channel_videos[rank]
-                thumbnails_to_download.append({
-                    'video_id': video['id'],
-                    'title': video['title'],
-                    'thumbnail_url': video.get('thumbnail_url', ''),
-                    'rank': rank + 1
-                })
-        
-        if thumbnails_to_download:
-            self.progress_label.config(text="썸네일 다운로드 중...")
-            
-            thread = threading.Thread(target=lambda: self._download_thumbnails(thumbnails_to_download))
-            thread.daemon = True
-            thread.start()
-    
-    def _download_thumbnails(self, thumbnails):
-        """썸네일 다운로드 실행"""
-        try:
-            result = self.api_client.download_multiple_thumbnails(thumbnails)
-            
-            self.after(0, lambda: messagebox.showinfo("완료", 
-                f"썸네일 다운로드 완료!\n"
-                f"성공: {len(result.get('downloaded_files', []))}개\n"
-                f"실패: {result.get('failed_count', 0)}개"))
-            
-        except Exception as e:
-            self.after(0, lambda: messagebox.showerror("오류", f"썸네일 다운로드 실패: {str(e)}"))
-        
-        self.after(0, lambda: self.progress_label.config(text=""))
-    
-    def download_transcripts(self):
-        """선택한 영상의 대본 다운로드"""
-        if not self.selected_items:
-            messagebox.showwarning("알림", "다운로드할 영상을 선택해주세요.")
-            return
-        
-        # 선택된 영상 ID 수집
-        video_ids = []
-        for item in self.selected_items:
-            item_values = self.tree.item(item)['values']
-            rank = int(item_values[1]) - 1
-            
-            if 0 <= rank < len(self.channel_videos):
-                video = self.channel_videos[rank]
-                video_ids.append(video['id'])
-        
-        if video_ids:
-            self.progress_label.config(text="대본 다운로드 중...")
-            
-            thread = threading.Thread(target=lambda: self._download_transcripts(video_ids))
-            thread.daemon = True
-            thread.start()
-    
-    def _download_transcripts(self, video_ids):
-        """대본 다운로드 실행"""
-        try:
-            # 대본 다운로드를 위한 transcript_downloader 모듈이 필요
-            try:
-                from transcript_downloader import EnhancedTranscriptDownloader
-                downloader = EnhancedTranscriptDownloader()
-                
-                results = downloader.download_multiple_transcripts(video_ids)
-                
-                self.after(0, lambda: messagebox.showinfo("완료", 
-                    f"대본 다운로드 완료!\n"
-                    f"성공: {results['summary']['success_count']}개\n"
-                    f"실패: {results['summary']['failed_count']}개\n"
-                    f"성공률: {results['summary']['success_rate']:.1f}%"))
-                
-            except ImportError:
-                self.after(0, lambda: messagebox.showerror("오류", 
-                    "대본 다운로드 기능은 transcript_downloader 모듈이 필요합니다."))
-                
-        except Exception as e:
-            self.after(0, lambda: messagebox.showerror("오류", f"대본 다운로드 실패: {str(e)}"))
-        
-        self.after(0, lambda: self.progress_label.config(text=""))
-    
-    def export_to_excel(self):
-        """채널 분석 결과를 엑셀로 내보내기"""
-        if not self.channel_videos:
-            messagebox.showwarning("알림", "내보낼 데이터가 없습니다.")
-            return
-        
-        filename = filedialog.asksaveasfilename(
-            defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
-            title="채널 분석 결과 저장",
-            initialvalue=f"{self.channel_name}_analysis.xlsx"
-        )
-        
-        if filename:
-            try:
-                # 데이터 준비
-                analysis_data = []
-                for video in self.channel_videos:
-                    video_data = {
-                        'snippet': {
-                            'title': video['title'],
-                            'channelTitle': self.channel_name,
-                            'publishedAt': video['published_at'],
-                            'description': video.get('description', '')
-                        },
-                        'statistics': {
-                            'viewCount': str(video.get('view_count', 0)),
-                            'likeCount': str(video.get('like_count', 0)),
-                            'commentCount': str(video.get('comment_count', 0))
-                        },
-                        'contentDetails': {
-                            'duration': f"PT{video.get('duration_seconds', 0)}S"
-                        },
-                        'analysis': {
-                            'video_type': video.get('video_type', '알수없음'),
-                            'performance_score': video.get('performance_score', 0),
-                            'formatted_duration': self.format_duration(video.get('duration_seconds', 0))
-                        },
-                        'id': video['id'],
-                        'rank': video.get('rank', 0)
-                    }
-                    analysis_data.append(video_data)
-                
-                # 엑셀 생성
-                excel_gen = ExcelGenerator(filename)
-                settings = {
-                    'mode': 'channel_analysis',
-                    'channel_name': self.channel_name,
-                    'channel_id': self.channel_id,
-                    'video_count': len(self.channel_videos),
-                    'analysis_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                }
-                excel_gen.create_excel_file(analysis_data, settings)
-                
-                messagebox.showinfo("성공", f"채널 분석 결과가 저장되었습니다:\n{filename}")
-            except Exception as e:
-                messagebox.showerror("오류", f"엑셀 저장 실패: {str(e)}")
-    
-    def sort_channel_treeview(self, col):
-        """채널 분석 트리뷰 정렬"""
-        # 정렬 상태 토글
-        reverse = not self.channel_sort_reverse.get(col, False)
-        self.channel_sort_reverse[col] = reverse
-        
-        # 데이터 가져오기
-        data = []
-        for item in self.tree.get_children():
-            values = self.tree.item(item)['values']
-            data.append((values, item))
-        
-        # 컬럼별 정렬 로직
-        if col == "순위":
-            data.sort(key=lambda x: int(x[0][1]), reverse=reverse)
-        elif col == "업로드일":
-            data.sort(key=lambda x: x[0][2], reverse=reverse)
-        elif col == "제목":
-            data.sort(key=lambda x: x[0][3], reverse=reverse)
-        elif col == "조회수":
-            data.sort(key=lambda x: int(str(x[0][4]).replace(',', '')), reverse=reverse)
-        elif col == "좋아요":
-            data.sort(key=lambda x: int(str(x[0][5]).replace(',', '')), reverse=reverse)
-        elif col == "댓글수":
-            data.sort(key=lambda x: int(str(x[0][6]).replace(',', '')), reverse=reverse)
-        elif col == "영상유형":
-            data.sort(key=lambda x: x[0][7], reverse=reverse)
-        elif col == "길이":
-            data.sort(key=lambda x: self._duration_to_seconds(x[0][8]), reverse=reverse)
-        elif col == "성과점수":
-            data.sort(key=lambda x: float(str(x[0][9]).replace('x', '')), reverse=reverse)
-        
-        # 정렬된 순서로 아이템 재배치
-        for index, (values, item) in enumerate(data):
-            self.tree.move(item, '', index)
-        
-        # 헤더에 정렬 표시
-        for column in self.tree['columns']:
-            if column == col:
-                sort_symbol = " ▼" if reverse else " ▲"
-                self.tree.heading(column, text=column + sort_symbol)
-            elif column != "선택":  # 선택 컬럼은 제외
-                self.tree.heading(column, text=column)
-    
-    def _duration_to_seconds(self, duration_str):
-        """시간 문자열을 초로 변환 (정렬용)"""
-        try:
-            parts = duration_str.split(':')
-            if len(parts) == 2:  # MM:SS
-                return int(parts[0]) * 60 + int(parts[1])
-            elif len(parts) == 3:  # HH:MM:SS
-                return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-            else:
-                return 0
-        except:
-            return 0
-
-
-class ChannelAnalysisDialog(tk.Toplevel):
-    """기존 채널 분석 다이얼로그 (검색 결과에서 호출용)"""
-    def __init__(self, parent, channel_id, channel_name, api_client):
-        super().__init__(parent)
-        
-        self.title(f"채널 분석 - {channel_name}")
-        self.geometry("1000x700")
-        self.configure(bg="#f0f0f0")
-        
-        self.channel_id = channel_id
-        self.channel_name = channel_name
-        self.api_client = api_client
-        self.channel_videos = []
-        self.selected_items = set()
-        
-        # UI 생성
-        self.create_widgets()
-        
-        # 채널 영상 로드
-        self.load_channel_videos()
-    
-    def create_widgets(self):
-        """위젯 생성"""
-        # 헤더
-        header_frame = tk.Frame(self, bg="white", height=60, relief='solid', bd=1)
-        header_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
-        header_frame.pack_propagate(False)
-        
-        tk.Label(header_frame, text=f"📺 {self.channel_name}",
-                font=("Arial", 18, "bold"),
-                bg="white", fg="#333333").pack(side=tk.LEFT, padx=20, pady=15)
-        
-        # 영상 목록 프레임
-        list_frame = tk.Frame(self, bg="white", relief='solid', bd=1)
-        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        # 트리뷰
-        columns = ("선택", "업로드일", "제목", "조회수", "좋아요", "영상유형", "길이")
-        
-        self.tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=15)
-        
-        # 컬럼 설정
-        column_widths = {
-            "선택": 50,
-            "업로드일": 100,
-            "제목": 350,
-            "조회수": 100,
-            "좋아요": 80,
-            "영상유형": 80,
-            "길이": 80
-        }
-        
-        for col in columns:
-            self.tree.heading(col, text=col)
-            self.tree.column(col, width=column_widths.get(col, 100))
-        
-        # 스크롤바
-        vsb = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=vsb.set)
-        
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=20, pady=20)
-        vsb.pack(side=tk.RIGHT, fill=tk.Y, pady=20)
-        
-        # 클릭 이벤트
-        self.tree.bind("<Button-1>", self.on_item_click)
-        
-        # 버튼 프레임
-        button_frame = tk.Frame(self, bg="#f0f0f0", height=80, relief='solid', bd=1)
-        button_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
-        button_frame.pack_propagate(False)
-        
-        # 버튼 컨테이너
-        button_container = tk.Frame(button_frame, bg="#f0f0f0")
-        button_container.pack(expand=True)
-        
-        # 선택 버튼들
-        tk.Button(button_container, text="모두 선택", 
-                 command=self.select_all, bg="#e0e0e0", fg="black",
-                 font=('Arial', 11), padx=10, pady=5).pack(side=tk.LEFT, padx=5)
-        
-        tk.Button(button_container, text="모두 해제", 
-                 command=self.deselect_all, bg="#e0e0e0", fg="black",
-                 font=('Arial', 11), padx=10, pady=5).pack(side=tk.LEFT, padx=5)
-        
-        # 다운로드 버튼들
-        tk.Button(button_container, text="썸네일 다운로드", 
-                 command=self.download_thumbnails, bg="#007AFF", fg="white",
-                 font=('Arial', 11, 'bold'), padx=15, pady=5).pack(side=tk.LEFT, padx=20)
-        
-        tk.Button(button_container, text="대본 다운로드", 
-                 command=self.download_transcripts, bg="#007AFF", fg="white",
-                 font=('Arial', 11, 'bold'), padx=15, pady=5).pack(side=tk.LEFT, padx=5)
-        
-        # 닫기 버튼
-        tk.Button(button_container, text="닫기", 
-                 command=self.destroy, bg="#e0e0e0", fg="black",
-                 font=('Arial', 11), padx=20, pady=5).pack(side=tk.RIGHT, padx=10)
-        
-        # 진행 상태
-        self.progress_label = tk.Label(self, text="", 
-                                     font=("Arial", 11),
-                                     bg="#f0f0f0", fg="#666666")
-        self.progress_label.pack(pady=5)
-    
-    def on_item_click(self, event):
-        """아이템 클릭 처리"""
-        region = self.tree.identify_region(event.x, event.y)
-        if region == "cell":
-            item = self.tree.identify_row(event.y)
-            column = self.tree.identify_column(event.x)
-            
-            # 선택 컬럼 클릭 시 체크박스 토글
-            if item and column == "#1":  # 첫 번째 컬럼
-                if item in self.selected_items:
-                    self.selected_items.remove(item)
-                    values = list(self.tree.item(item)['values'])
-                    values[0] = "☐"
-                    self.tree.item(item, values=values)
-                else:
-                    self.selected_items.add(item)
-                    values = list(self.tree.item(item)['values'])
-                    values[0] = "☑"
-                    self.tree.item(item, values=values)
-    
-    def load_channel_videos(self):
-        """채널 영상 로드"""
-        self.progress_label.config(text="채널 영상을 불러오는 중...")
-        
-        thread = threading.Thread(target=self._fetch_channel_videos)
-        thread.daemon = True
-        thread.start()
-    
-    def _fetch_channel_videos(self):
-        """채널 영상 가져오기"""
-        try:
-            videos = self.api_client.get_channel_videos(self.channel_id, max_results=50)
-            self.channel_videos = videos
-            
-            # UI 업데이트
-            self.after(0, self._display_videos)
-            
-        except Exception as e:
-            self.after(0, lambda: messagebox.showerror("오류", f"채널 영상 로드 실패: {str(e)}"))
-    
-    def _display_videos(self):
-        """영상 목록 표시"""
-        for video in self.channel_videos:
-            # 날짜 포맷
-            upload_date = video.get('published_at', '')[:10]
-            
-            # 조회수/좋아요 포맷
-            views = f"{video.get('view_count', 0):,}"
-            likes = f"{video.get('like_count', 0):,}"
-            
-            # 영상 유형과 길이
-            duration_seconds = self.api_client.parse_duration(video.get('duration', 'PT0S'))
-            video_type = "쇼츠" if duration_seconds <= 60 else "롱폼"
-            duration = self.format_duration(duration_seconds)
-            
-            # 트리에 추가
-            item = self.tree.insert("", tk.END, 
-                                   values=("☐", upload_date, video['title'], 
-                                          views, likes, video_type, duration))
-        
-        self.progress_label.config(text=f"총 {len(self.channel_videos)}개 영상")
-    
-    def format_duration(self, seconds):
-        """초를 시:분:초 형식으로 변환"""
-        hours = seconds // 3600
-        minutes = (seconds % 3600) // 60
-        secs = seconds % 60
-        
-        if hours > 0:
-            return f"{hours}:{minutes:02d}:{secs:02d}"
-        else:
-            return f"{minutes}:{secs:02d}"
-    
-    def select_all(self):
-        """모두 선택"""
-        for item in self.tree.get_children():
-            self.selected_items.add(item)
-            values = list(self.tree.item(item)['values'])
-            values[0] = "☑"
-            self.tree.item(item, values=values)
-    
-    def deselect_all(self):
-        """모두 해제"""
-        for item in self.tree.get_children():
-            if item in self.selected_items:
-                self.selected_items.remove(item)
-            values = list(self.tree.item(item)['values'])
-            values[0] = "☐"
-            self.tree.item(item, values=values)
-    
-    def download_thumbnails(self):
-        """선택한 영상의 썸네일 다운로드"""
-        if not self.selected_items:
-            messagebox.showwarning("알림", "다운로드할 영상을 선택해주세요.")
-            return
-        
-        # 선택된 영상 정보 수집
-        thumbnails_to_download = []
-        for item in self.selected_items:
-            item_values = self.tree.item(item)['values']
-            video_title = item_values[2]
-            
-            # 영상 ID 찾기 (실제로는 인덱스로 찾아야 함)
-            item_index = list(self.tree.get_children()).index(item)
-            if item_index < len(self.channel_videos):
-                video = self.channel_videos[item_index]
-                thumbnails_to_download.append({
-                    'video_id': video['id'],
-                    'title': video_title,
-                    'thumbnail_url': video.get('thumbnail_url', '')
-                })
-        
-        if thumbnails_to_download:
-            self.progress_label.config(text="썸네일 다운로드 중...")
-            
-            thread = threading.Thread(target=lambda: self._download_thumbnails(thumbnails_to_download))
-            thread.daemon = True
-            thread.start()
-    
-    def _download_thumbnails(self, thumbnails):
-        """썸네일 다운로드 실행"""
-        try:
-            result = self.api_client.download_multiple_thumbnails(thumbnails)
-            
-            self.after(0, lambda: messagebox.showinfo("완료", 
-                f"썸네일 다운로드 완료!\n"
-                f"성공: {len(result.get('downloaded_files', []))}개\n"
-                f"실패: {result.get('failed_count', 0)}개"))
-            
-        except Exception as e:
-            self.after(0, lambda: messagebox.showerror("오류", f"썸네일 다운로드 실패: {str(e)}"))
-        
-        self.after(0, lambda: self.progress_label.config(text=""))
-    
-    def download_transcripts(self):
-        """선택한 영상의 대본 다운로드"""
-        if not self.selected_items:
-            messagebox.showwarning("알림", "다운로드할 영상을 선택해주세요.")
-            return
-        
-        # 선택된 영상 ID 수집
-        video_ids = []
-        for item in self.selected_items:
-            item_index = list(self.tree.get_children()).index(item)
-            if item_index < len(self.channel_videos):
-                video = self.channel_videos[item_index]
-                video_ids.append(video['id'])
-        
-        if video_ids:
-            self.progress_label.config(text="대본 다운로드 중...")
-            
-            thread = threading.Thread(target=lambda: self._download_transcripts(video_ids))
-            thread.daemon = True
-            thread.start()
-    
-    def _download_transcripts(self, video_ids):
-        """대본 다운로드 실행"""
-        try:
-            # 대본 다운로드를 위한 transcript_downloader 모듈이 필요
-            try:
-                from transcript_downloader import EnhancedTranscriptDownloader
-                downloader = EnhancedTranscriptDownloader()
-                
-                success_count = 0
-                fail_count = 0
-                
-                for video_id in video_ids:
-                    try:
-                        downloader.download_transcript(video_id)
-                        success_count += 1
-                    except:
-                        fail_count += 1
-                
-                self.after(0, lambda: messagebox.showinfo("완료", 
-                    f"대본 다운로드 완료!\n"
-                    f"성공: {success_count}개\n"
-                    f"실패: {fail_count}개"))
-                
-            except ImportError:
-                self.after(0, lambda: messagebox.showerror("오류", 
-                    "대본 다운로드 기능은 transcript_downloader 모듈이 필요합니다."))
-                
-        except Exception as e:
-            self.after(0, lambda: messagebox.showerror("오류", f"대본 다운로드 실패: {str(e)}"))
-        
-        self.after(0, lambda: self.progress_label.config(text=""))
-
-
 class ImprovedYouTubeAnalyzerGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("YouTube DeepSearch - 콘텐츠 분석 툴")
-        self.root.geometry("1200x800")
+        self.root.geometry("1200x850")  # 높이를 50px 증가
         
         # 색상 설정
         self.bg_color = "#f0f0f0"
@@ -984,6 +61,7 @@ class ImprovedYouTubeAnalyzerGUI:
         # 분석 결과 저장
         self.analyzed_videos = []
         self.current_settings = {}
+        self.selected_items = set()  # 선택된 아이템 추적
         
         # 캐시
         self.channel_cache = {}
@@ -1072,8 +150,6 @@ class ImprovedYouTubeAnalyzerGUI:
         tab_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         
         # 탭 버튼들
-        self.current_tab = tk.StringVar(value="keyword")
-        
         tab_button_frame = tk.Frame(tab_frame, bg=self.card_bg)
         tab_button_frame.pack(fill=tk.X)
         
@@ -1106,7 +182,7 @@ class ImprovedYouTubeAnalyzerGUI:
         self.create_keyword_filters(self.keyword_frame)
         self.create_channel_filters(self.channel_frame)
         
-        # 검색 버튼 - 더 크고 눈에 띄게
+        # 검색 버튼들
         button_frame = tk.Frame(parent, bg=self.card_bg)
         button_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=20)
         
@@ -1123,7 +199,7 @@ class ImprovedYouTubeAnalyzerGUI:
                                               font=('Arial', 14, 'bold'),
                                               pady=15, relief='raised', bd=2)
         # 초기에는 숨김
-        
+    
     def switch_tab(self, tab_name):
         """탭 전환"""
         self.current_tab.set(tab_name)
@@ -1147,7 +223,221 @@ class ImprovedYouTubeAnalyzerGUI:
             # 탭 버튼 스타일 업데이트
             self.channel_tab_btn.config(bg=self.accent_color, fg="white", font=('Arial', 10, 'bold'))
             self.keyword_tab_btn.config(bg="#e0e0e0", fg="black", font=('Arial', 10))
-    
+
+    def create_channel_filters(self, parent):
+        """채널 분석 필터 생성"""
+        # 채널 URL/ID 입력
+        channel_frame = tk.Frame(parent, bg=self.card_bg)
+        channel_frame.pack(fill=tk.X, pady=(10, 15))
+        
+        tk.Label(channel_frame, text="📺 채널 주소 또는 ID", 
+                font=('Arial', 12, 'bold'),
+                bg=self.card_bg, fg=self.text_primary).pack(anchor=tk.W, pady=(0, 5))
+        
+        self.channel_url_entry = tk.Entry(channel_frame, font=('Arial', 12), relief='solid', bd=1)
+        self.channel_url_entry.pack(fill=tk.X, ipady=8)
+        
+        # 입력 힌트
+        hint_frame = tk.Frame(channel_frame, bg=self.card_bg)
+        hint_frame.pack(fill=tk.X, pady=(2, 0))
+        
+        tk.Label(hint_frame, text="지원 형식:", 
+                font=('Arial', 9, 'bold'),
+                bg=self.card_bg, fg=self.text_secondary).pack(anchor=tk.W)
+        
+        hints = [
+            "• https://www.youtube.com/channel/UC...",
+            "• https://www.youtube.com/c/채널명",
+            "• https://www.youtube.com/@핸들명",
+            "• 채널 ID만 입력 (UC...)"
+        ]
+        
+        for hint in hints:
+            tk.Label(hint_frame, text=hint, 
+                    font=('Arial', 8),
+                    bg=self.card_bg, fg=self.text_secondary).pack(anchor=tk.W)
+        
+        # 분석 옵션
+        options_frame = tk.Frame(parent, bg=self.card_bg)
+        options_frame.pack(fill=tk.X, pady=(20, 15))
+        
+        tk.Label(options_frame, text="🔧 분석 옵션", 
+                font=('Arial', 12, 'bold'),
+                bg=self.card_bg, fg=self.text_primary).pack(anchor=tk.W, pady=(0, 10))
+        
+        # 영상 개수
+        video_count_frame = tk.Frame(options_frame, bg=self.card_bg)
+        video_count_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        tk.Label(video_count_frame, text="📊 분석할 영상 수", 
+                font=('Arial', 11, 'bold'),
+                bg=self.card_bg, fg=self.text_primary).pack(anchor=tk.W, pady=(0, 5))
+        
+        self.channel_video_count_var = tk.StringVar(value="50")
+        video_count_combo = ttk.Combobox(video_count_frame, textvariable=self.channel_video_count_var,
+                                        values=["10", "25", "50", "100"],
+                                        state="readonly", font=('Arial', 11))
+        video_count_combo.pack(fill=tk.X)
+        
+        # 정렬 방식
+        channel_sort_frame = tk.Frame(options_frame, bg=self.card_bg)
+        channel_sort_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        tk.Label(channel_sort_frame, text="📈 정렬 방식", 
+                font=('Arial', 11, 'bold'),
+                bg=self.card_bg, fg=self.text_primary).pack(anchor=tk.W, pady=(0, 5))
+        
+        self.channel_sort_var = tk.StringVar(value="최신순")
+        channel_sort_combo = ttk.Combobox(channel_sort_frame, textvariable=self.channel_sort_var,
+                                         values=["최신순", "조회수순"],
+                                         state="readonly", font=('Arial', 11))
+        channel_sort_combo.pack(fill=tk.X)
+
+    def start_channel_analysis(self):
+        """채널 분석 시작"""
+        channel_input = self.channel_url_entry.get().strip()
+        if not channel_input:
+            messagebox.showwarning("오류", "채널 주소 또는 ID를 입력해주세요.")
+            return
+        
+        api_key = self.api_entry.get().strip()
+        if not api_key:
+            messagebox.showwarning("오류", "API 키를 입력해주세요.")
+            return
+        
+        # 채널 ID 추출
+        channel_id, channel_name = self.extract_channel_info(channel_input)
+        if not channel_id:
+            messagebox.showerror("오류", "유효하지 않은 채널 주소입니다.\n지원하는 형식을 확인해주세요.")
+            return
+        
+        # API 클라이언트 초기화
+        try:
+            if not self.api_client:
+                self.api_client = YouTubeAPIClient(api_key)
+        except Exception as e:
+            messagebox.showerror("오류", f"API 클라이언트 초기화 실패: {str(e)}")
+            return
+        
+        # 채널 이름 가져오기 (ID만 입력된 경우)
+        if not channel_name:
+            try:
+                channel_info = self.api_client.get_channel_info(channel_id)
+                if channel_info:
+                    channel_name = channel_info['snippet']['title']
+                else:
+                    channel_name = "알 수 없는 채널"
+            except Exception as e:
+                channel_name = "알 수 없는 채널"
+        
+        # 채널 분석 다이얼로그 열기
+        try:
+            dialog = EnhancedChannelAnalysisDialog(
+                self.root, 
+                channel_id, 
+                channel_name, 
+                self.api_client,
+                int(self.channel_video_count_var.get()),
+                "date" if self.channel_sort_var.get() == "최신순" else "viewCount"
+            )
+            dialog.transient(self.root)
+            dialog.grab_set()
+        except Exception as e:
+            messagebox.showerror("오류", f"채널 분석 다이얼로그 생성 실패: {str(e)}")
+
+    def extract_channel_info(self, channel_input):
+        """채널 URL에서 채널 ID와 이름 추출"""
+        import re
+        
+        channel_input = channel_input.strip()
+        
+        # 이미 채널 ID인 경우 (UC로 시작)
+        if channel_input.startswith('UC') and len(channel_input) == 24:
+            return channel_input, None
+        
+        # 다양한 YouTube URL 패턴 처리
+        patterns = [
+            r'youtube\.com/channel/([a-zA-Z0-9_-]+)',
+            r'youtube\.com/c/([a-zA-Z0-9_-]+)',
+            r'youtube\.com/user/([a-zA-Z0-9_-]+)',
+            r'youtube\.com/@([a-zA-Z0-9_.-]+)',
+            r'youtube\.com/([a-zA-Z0-9_-]+)$'
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, channel_input)
+            if match:
+                identifier = match.group(1)
+                
+                # 채널 ID인 경우 (UC로 시작)
+                if identifier.startswith('UC') and len(identifier) == 24:
+                    return identifier, None
+                
+                # 다른 형태인 경우 API로 채널 ID 찾기
+                try:
+                    if not self.api_client:
+                        self.api_client = YouTubeAPIClient(self.api_entry.get().strip())
+                    
+                    channel_id = self.resolve_channel_identifier(identifier, channel_input)
+                    if channel_id:
+                        return channel_id, identifier
+                        
+                except Exception as e:
+                    print(f"채널 ID 해결 오류: {e}")
+        
+        return None, None
+
+    def resolve_channel_identifier(self, identifier, original_url):
+        """채널 식별자를 채널 ID로 변환"""
+        try:
+            # @handle 형태인 경우
+            if original_url.find('@') != -1:
+                search_request = self.api_client.youtube.search().list(
+                    part='snippet',
+                    q=identifier,
+                    type='channel',
+                    maxResults=5
+                )
+                search_response = search_request.execute()
+                
+                for item in search_response.get('items', []):
+                    if item['snippet']['title'].lower().replace(' ', '') == identifier.lower().replace(' ', ''):
+                        return item['snippet']['channelId']
+                
+                if search_response.get('items'):
+                    return search_response['items'][0]['snippet']['channelId']
+            
+            # username이나 custom URL인 경우
+            else:
+                search_queries = [identifier, f'"{identifier}"']
+                
+                for query in search_queries:
+                    try:
+                        search_request = self.api_client.youtube.search().list(
+                            part='snippet',
+                            q=query,
+                            type='channel',
+                            maxResults=5
+                        )
+                        search_response = search_request.execute()
+                        
+                        for item in search_response.get('items', []):
+                            channel_title = item['snippet']['title'].lower().replace(' ', '')
+                            if identifier.lower().replace(' ', '') in channel_title:
+                                return item['snippet']['channelId']
+                        
+                        if search_response.get('items'):
+                            return search_response['items'][0]['snippet']['channelId']
+                            
+                    except Exception as e:
+                        continue
+            
+            return None
+            
+        except Exception as e:
+            print(f"채널 식별자 해결 오류: {e}")
+            return None
+
     def create_keyword_filters(self, parent):
         """키워드 검색 필터 생성"""
         # 검색 키워드
@@ -1161,11 +451,6 @@ class ImprovedYouTubeAnalyzerGUI:
         self.keyword_entry = tk.Entry(keyword_frame, font=('Arial', 12), relief='solid', bd=1)
         self.keyword_entry.pack(fill=tk.X, ipady=8)
         self.keyword_entry.insert(0, "서울 카페")
-        
-        # 입력 힌트
-        tk.Label(keyword_frame, text="예: 맛집, 여행, vlog, 게임 등", 
-                font=('Arial', 9),
-                bg=self.card_bg, fg=self.text_secondary).pack(anchor=tk.W, pady=(2, 0))
         
         # 정렬 기준
         sort_frame = tk.Frame(parent, bg=self.card_bg)
@@ -1236,231 +521,7 @@ class ImprovedYouTubeAnalyzerGUI:
                                  values=["제한없음", "1,000", "10,000", "100,000"],
                                  state="readonly", font=('Arial', 11))
         subs_combo.pack(fill=tk.X)
-    
-    def create_channel_filters(self, parent):
-        """채널 분석 필터 생성"""
-        # 채널 URL/ID 입력
-        channel_frame = tk.Frame(parent, bg=self.card_bg)
-        channel_frame.pack(fill=tk.X, pady=(10, 15))
-        
-        tk.Label(channel_frame, text="📺 채널 주소 또는 ID", 
-                font=('Arial', 12, 'bold'),
-                bg=self.card_bg, fg=self.text_primary).pack(anchor=tk.W, pady=(0, 5))
-        
-        self.channel_url_entry = tk.Entry(channel_frame, font=('Arial', 12), relief='solid', bd=1)
-        self.channel_url_entry.pack(fill=tk.X, ipady=8)
-        
-        # 입력 힌트
-        hint_frame = tk.Frame(channel_frame, bg=self.card_bg)
-        hint_frame.pack(fill=tk.X, pady=(2, 0))
-        
-        tk.Label(hint_frame, text="지원 형식:", 
-                font=('Arial', 9, 'bold'),
-                bg=self.card_bg, fg=self.text_secondary).pack(anchor=tk.W)
-        
-        hints = [
-            "• https://www.youtube.com/channel/UC...",
-            "• https://www.youtube.com/c/채널명",
-            "• https://www.youtube.com/@핸들명",
-            "• 채널 ID만 입력 (UC...)"
-        ]
-        
-        for hint in hints:
-            tk.Label(hint_frame, text=hint, 
-                    font=('Arial', 8),
-                    bg=self.card_bg, fg=self.text_secondary).pack(anchor=tk.W)
-        
-        # 분석 옵션
-        options_frame = tk.Frame(parent, bg=self.card_bg)
-        options_frame.pack(fill=tk.X, pady=(20, 15))
-        
-        tk.Label(options_frame, text="🔧 분석 옵션", 
-                font=('Arial', 12, 'bold'),
-                bg=self.card_bg, fg=self.text_primary).pack(anchor=tk.W, pady=(0, 10))
-        
-        # 영상 개수
-        video_count_frame = tk.Frame(options_frame, bg=self.card_bg)
-        video_count_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        tk.Label(video_count_frame, text="📊 분석할 영상 수", 
-                font=('Arial', 11, 'bold'),
-                bg=self.card_bg, fg=self.text_primary).pack(anchor=tk.W, pady=(0, 5))
-        
-        self.channel_video_count_var = tk.StringVar(value="50")
-        video_count_combo = ttk.Combobox(video_count_frame, textvariable=self.channel_video_count_var,
-                                        values=["10", "25", "50", "100"],
-                                        state="readonly", font=('Arial', 11))
-        video_count_combo.pack(fill=tk.X)
-        
-        # 정렬 방식
-        channel_sort_frame = tk.Frame(options_frame, bg=self.card_bg)
-        channel_sort_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        tk.Label(channel_sort_frame, text="📈 정렬 방식", 
-                font=('Arial', 11, 'bold'),
-                bg=self.card_bg, fg=self.text_primary).pack(anchor=tk.W, pady=(0, 5))
-        
-        self.channel_sort_var = tk.StringVar(value="최신순")
-        channel_sort_combo = ttk.Combobox(channel_sort_frame, textvariable=self.channel_sort_var,
-                                         values=["최신순", "조회수순"],
-                                         state="readonly", font=('Arial', 11))
-        channel_sort_combo.pack(fill=tk.X)
-    
-    def start_channel_analysis(self):
-        """채널 분석 시작"""
-        channel_input = self.channel_url_entry.get().strip()
-        if not channel_input:
-            messagebox.showwarning("오류", "채널 주소 또는 ID를 입력해주세요.")
-            return
-        
-        api_key = self.api_entry.get().strip()
-        if not api_key:
-            messagebox.showwarning("오류", "API 키를 입력해주세요.")
-            return
-        
-        # 채널 ID 추출
-        channel_id, channel_name = self.extract_channel_info(channel_input)
-        if not channel_id:
-            messagebox.showerror("오류", "유효하지 않은 채널 주소입니다.\n지원하는 형식을 확인해주세요.")
-            return
-        
-        # API 클라이언트 초기화
-        try:
-            if not self.api_client:
-                self.api_client = YouTubeAPIClient(api_key)
-        except Exception as e:
-            messagebox.showerror("오류", f"API 클라이언트 초기화 실패: {str(e)}")
-            return
-        
-        # 채널 이름 가져오기 (ID만 입력된 경우)
-        if not channel_name:
-            try:
-                channel_info = self.api_client.get_channel_info(channel_id)
-                if channel_info:
-                    channel_name = channel_info['snippet']['title']
-                else:
-                    channel_name = "알 수 없는 채널"
-            except Exception as e:
-                channel_name = "알 수 없는 채널"
-        
-        # 채널 분석 다이얼로그 열기
-        try:
-            dialog = EnhancedChannelAnalysisDialog(
-                self.root, 
-                channel_id, 
-                channel_name, 
-                self.api_client,
-                int(self.channel_video_count_var.get()),
-                "date" if self.channel_sort_var.get() == "최신순" else "viewCount"
-            )
-            dialog.transient(self.root)
-            dialog.grab_set()
-        except Exception as e:
-            messagebox.showerror("오류", f"채널 분석 다이얼로그 생성 실패: {str(e)}")
-    
-    def extract_channel_info(self, channel_input):
-        """채널 URL에서 채널 ID와 이름 추출"""
-        import re
-        
-        channel_input = channel_input.strip()
-        
-        # 이미 채널 ID인 경우 (UC로 시작)
-        if channel_input.startswith('UC') and len(channel_input) == 24:
-            return channel_input, None
-        
-        # 다양한 YouTube URL 패턴 처리
-        patterns = [
-            # https://www.youtube.com/channel/UCxxxxx
-            r'youtube\.com/channel/([a-zA-Z0-9_-]+)',
-            # https://www.youtube.com/c/channelname
-            r'youtube\.com/c/([a-zA-Z0-9_-]+)',
-            # https://www.youtube.com/user/username
-            r'youtube\.com/user/([a-zA-Z0-9_-]+)',
-            # https://www.youtube.com/@handle
-            r'youtube\.com/@([a-zA-Z0-9_.-]+)',
-            # youtube.com/channelname (직접)
-            r'youtube\.com/([a-zA-Z0-9_-]+)$'
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, channel_input)
-            if match:
-                identifier = match.group(1)
-                
-                # 채널 ID인 경우 (UC로 시작)
-                if identifier.startswith('UC') and len(identifier) == 24:
-                    return identifier, None
-                
-                # 다른 형태인 경우 API로 채널 ID 찾기
-                try:
-                    if not self.api_client:
-                        self.api_client = YouTubeAPIClient(self.api_entry.get().strip())
-                    
-                    channel_id = self.resolve_channel_identifier(identifier, channel_input)
-                    if channel_id:
-                        return channel_id, identifier
-                        
-                except Exception as e:
-                    print(f"채널 ID 해결 오류: {e}")
-        
-        return None, None
-    
-    def resolve_channel_identifier(self, identifier, original_url):
-        """채널 식별자를 채널 ID로 변환"""
-        try:
-            # @handle 형태인 경우
-            if original_url.find('@') != -1:
-                # 검색으로 찾기
-                search_request = self.api_client.youtube.search().list(
-                    part='snippet',
-                    q=identifier,
-                    type='channel',
-                    maxResults=5
-                )
-                search_response = search_request.execute()
-                
-                for item in search_response.get('items', []):
-                    if item['snippet']['title'].lower().replace(' ', '') == identifier.lower().replace(' ', ''):
-                        return item['snippet']['channelId']
-                
-                # 정확히 일치하는 것이 없으면 첫 번째 결과 사용
-                if search_response.get('items'):
-                    return search_response['items'][0]['snippet']['channelId']
-            
-            # username이나 custom URL인 경우
-            else:
-                # 다양한 방법으로 시도
-                search_queries = [identifier, f'"{identifier}"']
-                
-                for query in search_queries:
-                    try:
-                        search_request = self.api_client.youtube.search().list(
-                            part='snippet',
-                            q=query,
-                            type='channel',
-                            maxResults=5
-                        )
-                        search_response = search_request.execute()
-                        
-                        for item in search_response.get('items', []):
-                            # 정확한 이름 매치 시도
-                            channel_title = item['snippet']['title'].lower().replace(' ', '')
-                            if identifier.lower().replace(' ', '') in channel_title:
-                                return item['snippet']['channelId']
-                        
-                        # 첫 번째 결과 사용
-                        if search_response.get('items'):
-                            return search_response['items'][0]['snippet']['channelId']
-                            
-                    except Exception as e:
-                        continue
-            
-            return None
-            
-        except Exception as e:
-            print(f"채널 식별자 해결 오류: {e}")
-            return None
-    
+
     def load_api_key(self):
         """API 키 자동 로드"""
         if config.DEVELOPER_KEY and config.DEVELOPER_KEY != "YOUR_YOUTUBE_API_KEY_HERE":
@@ -1485,6 +546,7 @@ class ImprovedYouTubeAnalyzerGUI:
         # 기존 결과 초기화
         for item in self.tree.get_children():
             self.tree.delete(item)
+        self.selected_items.clear()
         
         # 캐시 초기화
         self.channel_cache = {}
@@ -1568,7 +630,7 @@ class ImprovedYouTubeAnalyzerGUI:
             self.root.after(0, self.reset_search_button)
     
     def quick_analyze_videos(self, videos):
-        """빠른 분석 - 개선된 버전"""
+        """빠른 분석"""
         analyzed_videos = []
         
         for i, video in enumerate(videos):
@@ -1585,38 +647,10 @@ class ImprovedYouTubeAnalyzerGUI:
             except Exception as e:
                 print(f"영상 길이 계산 오류: {e}")
             
-            # 채널 평균 조회수 계산 (간단 버전)
-            channel_id = video['snippet']['channelId']
-            channel_avg_views = 0
-            outlier_score = 1.0
-            
-            if self.fast_mode.get():
-                # 빠른 모드: 추정치 사용
-                current_views = int(video['statistics'].get('viewCount', 0))
-                # 간단한 추정: 현재 영상 조회수를 기반으로 추정
-                channel_avg_views = max(current_views // 2, 1000)  # 최소 1000으로 설정
-                outlier_score = round(current_views / channel_avg_views, 2)
-            else:
-                # 정확한 모드: 실제 채널 통계 사용
-                try:
-                    if channel_id not in self.channel_cache:
-                        channel_stats = self.api_client.get_channel_recent_videos_stats(
-                            channel_id, max_results=10, light_mode=True
-                        )
-                        if channel_stats:
-                            self.channel_cache[channel_id] = channel_stats
-                        else:
-                            self.channel_cache[channel_id] = {'avg_views': 10000}
-                    
-                    channel_stats = self.channel_cache[channel_id]
-                    channel_avg_views = int(channel_stats.get('avg_views', 10000))
-                    current_views = int(video['statistics'].get('viewCount', 0))
-                    outlier_score = round(current_views / max(channel_avg_views, 1), 2)
-                    
-                except Exception as e:
-                    print(f"채널 통계 계산 오류: {e}")
-                    channel_avg_views = 10000
-                    outlier_score = 1.0
+            # 간단한 outlier score 계산
+            current_views = int(video['statistics'].get('viewCount', 0))
+            channel_avg_views = max(current_views // 2, 1000)
+            outlier_score = round(current_views / channel_avg_views, 2)
             
             # Outlier 카테고리 계산
             outlier_category = self.categorize_outlier_score(outlier_score)
@@ -1678,14 +712,12 @@ class ImprovedYouTubeAnalyzerGUI:
             if view_count == 0:
                 return 0.0
             
-            # 참여도 점수 계산 (가중 평균)
+            # 참여도 점수 계산
             like_ratio = (like_count / view_count) * 100
             comment_ratio = (comment_count / view_count) * 100
             
-            # 가중치: 좋아요 70%, 댓글 30%
             engagement_score = (like_ratio * 0.7 + comment_ratio * 0.3) * 1000
             
-            # 0-100 범위로 정규화
             return min(round(engagement_score, 2), 100.0)
             
         except Exception as e:
@@ -1705,7 +737,7 @@ class ImprovedYouTubeAnalyzerGUI:
             # 경과 일수 계산
             days_elapsed = (current_date - upload_date).days
             if days_elapsed == 0:
-                days_elapsed = 1  # 최소 1일로 처리
+                days_elapsed = 1
             
             return round(view_count / days_elapsed, 2)
             
@@ -1726,19 +758,6 @@ class ImprovedYouTubeAnalyzerGUI:
         except:
             return 0.0
     
-    def get_video_type(self, video):
-        """영상 유형 판별"""
-        try:
-            duration_str = video['contentDetails']['duration']
-            duration_seconds = self.api_client.parse_duration(duration_str)
-            
-            if duration_seconds <= 60:
-                return "쇼츠"
-            else:
-                return "롱폼"
-        except:
-            return "알수없음"
-    
     def update_progress(self, message):
         """진행 상황 업데이트"""
         self.root.after(0, lambda: self.progress_label.config(text=message))
@@ -1748,7 +767,7 @@ class ImprovedYouTubeAnalyzerGUI:
         self.search_button.configure(state='normal', text="🔍 검색 시작")
     
     def display_results(self, videos):
-        """결과 표시 - 개선된 버전"""
+        """결과 표시"""
         # 기존 항목 삭제
         for item in self.tree.get_children():
             self.tree.delete(item)
@@ -1771,7 +790,7 @@ class ImprovedYouTubeAnalyzerGUI:
             
             # 트리에 추가
             self.tree.insert("", tk.END, values=(
-                i, published, views, title, channel, duration, video_type, outlier_score, engagement_score
+                "☐", i, published, views, title, channel, duration, video_type, outlier_score, engagement_score
             ))
         
         # 상태 업데이트
@@ -1799,18 +818,23 @@ class ImprovedYouTubeAnalyzerGUI:
         tree_frame = tk.Frame(parent, bg=self.card_bg)
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
         
-        # 트리뷰 생성 - 더 많은 정보 표시
-        columns = ("순번", "업로드 날짜", "조회수", "제목", "채널", "영상 길이", "영상 유형", "Outlier점수", "참여도점수")
+        # 트리뷰 생성
+        columns = ("선택", "순번", "업로드 날짜", "조회수", "제목", "채널", "영상 길이", "영상 유형", "Outlier점수", "참여도점수")
         
         self.tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=15)
         
-        # 컬럼 설정 및 정렬 기능 추가
-        column_widths = {"순번": 50, "업로드 날짜": 100, "조회수": 100, 
-                        "제목": 250, "채널": 130, "영상 길이": 80, "영상 유형": 80,
-                        "Outlier점수": 100, "참여도점수": 100}
+        # 컬럼 설정
+        column_widths = {
+            "선택": 50, "순번": 50, "업로드 날짜": 100, "조회수": 100, 
+            "제목": 250, "채널": 130, "영상 길이": 80, "영상 유형": 80,
+            "Outlier점수": 100, "참여도점수": 100
+        }
         
         for col in columns:
-            self.tree.heading(col, text=col, command=lambda c=col: self.sort_treeview(c))
+            if col == "선택":
+                self.tree.heading(col, text=col)
+            else:
+                self.tree.heading(col, text=col, command=lambda c=col: self.sort_treeview(c))
             self.tree.column(col, width=column_widths.get(col, 100))
         
         # 정렬 상태 추적
@@ -1824,7 +848,8 @@ class ImprovedYouTubeAnalyzerGUI:
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # 더블클릭 이벤트
+        # 이벤트 바인딩
+        self.tree.bind("<Button-1>", self.on_item_click)
         self.tree.bind("<Double-1>", self.on_video_double_click)
         
         # 진행 상태 라벨
@@ -1833,8 +858,383 @@ class ImprovedYouTubeAnalyzerGUI:
                                       bg=self.card_bg, fg=self.text_secondary)
         self.progress_label.pack(pady=10)
     
+    def create_action_bar(self, parent):
+        """하단 액션 바"""
+        action_frame = tk.Frame(parent, bg=self.card_bg, height=100, relief='solid', bd=1)  # 높이 증가
+        action_frame.pack(fill=tk.X, pady=(10, 0))
+        action_frame.pack_propagate(False)
+        
+        # 상단 버튼 행 (선택 관련)
+        top_button_row = tk.Frame(action_frame, bg=self.card_bg)
+        top_button_row.pack(pady=(10, 5))
+        
+        # 선택 관련 버튼들
+        tk.Button(top_button_row, text="모두 선택", 
+                 command=self.select_all, bg="#e0e0e0", fg="black",
+                 font=('Arial', 10), padx=8, pady=3).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(top_button_row, text="모두 해제", 
+                 command=self.deselect_all, bg="#e0e0e0", fg="black",
+                 font=('Arial', 10), padx=8, pady=3).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(top_button_row, text="상위 10개 선택", 
+                 command=self.select_top_10, bg="#e0e0e0", fg="black",
+                 font=('Arial', 10), padx=8, pady=3).pack(side=tk.LEFT, padx=5)
+        
+        # 하단 버튼 행 (액션 관련)
+        bottom_button_row = tk.Frame(action_frame, bg=self.card_bg)
+        bottom_button_row.pack(pady=(5, 10))
+        
+        # 분석 관련 버튼
+        tk.Button(bottom_button_row, text="📺 선택한 채널 분석", 
+                 command=self.analyze_selected_channels, bg="#FF6B35", fg="white",
+                 font=('Arial', 11, 'bold'), padx=12, pady=5).pack(side=tk.LEFT, padx=10)
+        
+        # 구분선
+        separator = tk.Frame(bottom_button_row, width=2, height=30, bg="#ccc")
+        separator.pack(side=tk.LEFT, padx=10)
+        
+        # 다운로드 관련 버튼들
+        tk.Button(bottom_button_row, text="📊 엑셀 추출", 
+                 command=self.export_to_excel, bg="#28A745", fg="white",
+                 font=('Arial', 11, 'bold'), padx=12, pady=5).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(bottom_button_row, text="🖼️ 썸네일 다운로드", 
+                 command=self.download_thumbnails, bg="#007AFF", fg="white",
+                 font=('Arial', 11, 'bold'), padx=12, pady=5).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(bottom_button_row, text="📝 대본 다운로드", 
+                 command=self.download_transcripts, bg="#007AFF", fg="white",
+                 font=('Arial', 11, 'bold'), padx=12, pady=5).pack(side=tk.LEFT, padx=5)
+    
+    def on_item_click(self, event):
+        """아이템 클릭 처리 (체크박스 토글)"""
+        region = self.tree.identify_region(event.x, event.y)
+        if region == "cell":
+            item = self.tree.identify_row(event.y)
+            column = self.tree.identify_column(event.x)
+            
+            # 선택 컬럼 클릭 시 체크박스 토글
+            if item and column == "#1":  # 첫 번째 컬럼
+                if item in self.selected_items:
+                    self.selected_items.remove(item)
+                    values = list(self.tree.item(item)['values'])
+                    values[0] = "☐"
+                    self.tree.item(item, values=values)
+                else:
+                    self.selected_items.add(item)
+                    values = list(self.tree.item(item)['values'])
+                    values[0] = "☑"
+                    self.tree.item(item, values=values)
+    
+    def on_video_double_click(self, event):
+        """영상 더블클릭 - YouTube에서 열기"""
+        item = self.tree.identify_row(event.y)
+        column = self.tree.identify_column(event.x)
+        
+        # 선택 컬럼이 아닌 경우에만 영상 열기
+        if item and column != "#1":
+            try:
+                item_values = self.tree.item(item)['values']
+                rank = int(item_values[1]) - 1  # 순위에서 인덱스로 변환
+                
+                if 0 <= rank < len(self.analyzed_videos):
+                    video_id = self.analyzed_videos[rank]['id']
+                    url = f"https://www.youtube.com/watch?v={video_id}"
+                    webbrowser.open(url)
+            except Exception as e:
+                print(f"영상 열기 오류: {e}")
+    
+    def select_all(self):
+        """모든 영상 선택"""
+        for item in self.tree.get_children():
+            self.selected_items.add(item)
+            values = list(self.tree.item(item)['values'])
+            values[0] = "☑"
+            self.tree.item(item, values=values)
+    
+    def deselect_all(self):
+        """모든 영상 선택 해제"""
+        for item in self.tree.get_children():
+            if item in self.selected_items:
+                self.selected_items.remove(item)
+            values = list(self.tree.item(item)['values'])
+            values[0] = "☐"
+            self.tree.item(item, values=values)
+    
+    def select_top_10(self):
+        """상위 10개 영상 선택"""
+        self.deselect_all()
+        
+        # Outlier 점수 기준으로 상위 10개 선택
+        items_with_scores = []
+        for item in self.tree.get_children():
+            values = self.tree.item(item)['values']
+            try:
+                outlier_score = float(values[8].replace('x', ''))
+                items_with_scores.append((item, outlier_score))
+            except:
+                items_with_scores.append((item, 0.0))
+        
+        # 점수순으로 정렬
+        items_with_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        # 상위 10개 선택
+        for i, (item, score) in enumerate(items_with_scores[:10]):
+            self.selected_items.add(item)
+            values = list(self.tree.item(item)['values'])
+            values[0] = "☑"
+            self.tree.item(item, values=values)
+    
+    def export_to_excel(self):
+        """엑셀로 결과 내보내기"""
+        if not self.analyzed_videos:
+            messagebox.showwarning("알림", "내보낼 데이터가 없습니다.")
+            return
+        
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            title="분석 결과 저장"
+        )
+        
+        if filename:
+            try:
+                self.excel_generator = ExcelGenerator(filename)
+                
+                # 설정 정보 준비
+                settings = {
+                    'mode': 'keyword',
+                    'mode_name': '키워드 검색',
+                    'keyword': self.current_settings.get('keyword', ''),
+                    'region_name': '한국',
+                    'video_type_name': self.video_type_var.get(),
+                    'period_days': self.current_settings.get('period_days', 7),
+                    'max_subscribers_name': self.max_subscribers_var.get(),
+                    'min_views_name': self.min_views_var.get()
+                }
+                
+                self.excel_generator.create_excel_file(self.analyzed_videos, settings)
+                messagebox.showinfo("성공", f"분석 결과가 저장되었습니다:\n{filename}")
+            except Exception as e:
+                messagebox.showerror("오류", f"엑셀 저장 실패: {str(e)}")
+    
+    def download_thumbnails(self):
+        """선택한 영상의 썸네일 다운로드"""
+        if not self.selected_items:
+            messagebox.showwarning("알림", "다운로드할 영상을 선택해주세요.")
+            return
+        
+        selected_videos = []
+        for item in self.selected_items:
+            item_values = self.tree.item(item)['values']
+            rank = int(item_values[1]) - 1
+            
+            if 0 <= rank < len(self.analyzed_videos):
+                video = self.analyzed_videos[rank]
+                selected_videos.append({
+                    'video_id': video['id'],
+                    'title': video['snippet']['title'],
+                    'thumbnail_url': self.api_client.get_best_thumbnail_url(
+                        video['snippet']['thumbnails']
+                    ),
+                    'rank': rank + 1
+                })
+        
+        if selected_videos:
+            self.progress_label.config(text="썸네일 다운로드 중...")
+            
+            thread = threading.Thread(target=lambda: self._download_thumbnails(selected_videos))
+            thread.daemon = True
+            thread.start()
+    
+    def _download_thumbnails(self, videos):
+        """썸네일 다운로드 실행"""
+        try:
+            result = self.api_client.download_multiple_thumbnails(videos)
+            
+            self.root.after(0, lambda: messagebox.showinfo("완료", 
+                f"썸네일 다운로드 완료!\n"
+                f"성공: {len(result.get('downloaded_files', []))}개\n"
+                f"실패: {result.get('failed_count', 0)}개"))
+            
+        except Exception as e:
+            self.root.after(0, lambda: messagebox.showerror("오류", f"썸네일 다운로드 실패: {str(e)}"))
+        
+        self.root.after(0, lambda: self.progress_label.config(text=""))
+    
+    def download_transcripts(self):
+        """선택한 영상의 대본 다운로드"""
+        if not self.selected_items:
+            messagebox.showwarning("알림", "다운로드할 영상을 선택해주세요.")
+            return
+        
+        video_ids = []
+        for item in self.selected_items:
+            item_values = self.tree.item(item)['values']
+            rank = int(item_values[1]) - 1
+            
+            if 0 <= rank < len(self.analyzed_videos):
+                video = self.analyzed_videos[rank]
+                video_ids.append(video['id'])
+        
+        if video_ids:
+            self.progress_label.config(text="대본 다운로드 중...")
+            
+            thread = threading.Thread(target=lambda: self._download_transcripts(video_ids))
+            thread.daemon = True
+            thread.start()
+    
+    def _download_transcripts(self, video_ids):
+        """대본 다운로드 실행"""
+        try:
+            # transcript_downloader 모듈 사용
+            try:
+                from transcript_downloader import EnhancedTranscriptDownloader
+                downloader = EnhancedTranscriptDownloader()
+                
+                results = downloader.download_multiple_transcripts(video_ids)
+                
+                self.root.after(0, lambda: messagebox.showinfo("완료", 
+                    f"대본 다운로드 완료!\n"
+                    f"성공: {results['summary']['success_count']}개\n"
+                    f"실패: {results['summary']['failed_count']}개\n"
+                    f"성공률: {results['summary']['success_rate']:.1f}%"))
+                
+            except ImportError:
+                self.root.after(0, lambda: messagebox.showerror("오류", 
+                    "대본 다운로드 기능은 transcript_downloader 모듈이 필요합니다."))
+                
+        except Exception as e:
+            self.root.after(0, lambda: messagebox.showerror("오류", f"대본 다운로드 실패: {str(e)}"))
+        
+        self.root.after(0, lambda: self.progress_label.config(text=""))
+    
+    def analyze_selected_channels(self):
+        """선택한 영상들의 채널 분석"""
+        if not self.selected_items:
+            messagebox.showwarning("알림", "분석할 영상을 선택해주세요.")
+            return
+        
+        if not self.analyzed_videos:
+            messagebox.showwarning("알림", "분석된 영상 데이터가 없습니다.")
+            return
+        
+        try:
+            print(f"선택된 아이템 수: {len(self.selected_items)}")
+            print(f"분석된 영상 수: {len(self.analyzed_videos)}")
+            
+            # 선택된 영상들의 채널 정보 수집
+            selected_channels = {}
+            processed_count = 0
+            
+            for item in self.selected_items:
+                try:
+                    item_values = self.tree.item(item)['values']
+                    if not item_values or len(item_values) < 2:
+                        print(f"유효하지 않은 아이템 값: {item_values}")
+                        continue
+                        
+                    rank = int(item_values[1]) - 1
+                    print(f"처리 중인 순위: {rank + 1}")
+                    
+                    if 0 <= rank < len(self.analyzed_videos):
+                        video = self.analyzed_videos[rank]
+                        if 'snippet' in video:
+                            channel_id = video['snippet'].get('channelId', '')
+                            channel_name = video['snippet'].get('channelTitle', 'Unknown Channel')
+                            video_title = video['snippet'].get('title', 'Unknown Video')
+                            
+                            print(f"채널 발견: {channel_name} (ID: {channel_id})")
+                            
+                            if channel_id and channel_name:
+                                if channel_id not in selected_channels:
+                                    selected_channels[channel_id] = {
+                                        'name': channel_name,
+                                        'videos': []
+                                    }
+                                selected_channels[channel_id]['videos'].append(video_title)
+                                processed_count += 1
+                        else:
+                            print(f"영상에 snippet 정보가 없음: {video.keys()}")
+                    else:
+                        print(f"순위가 범위를 벗어남: {rank}, 최대: {len(self.analyzed_videos) - 1}")
+                except Exception as e:
+                    print(f"영상 처리 오류: {e}")
+                    continue
+            
+            print(f"처리된 영상 수: {processed_count}")
+            print(f"발견된 채널 수: {len(selected_channels)}")
+            
+            if not selected_channels:
+                messagebox.showwarning("알림", 
+                    f"선택된 {len(self.selected_items)}개 영상에서 유효한 채널을 찾을 수 없습니다.\n"
+                    f"영상 데이터를 다시 확인해주세요.")
+                return
+            
+            # 채널이 1개인 경우 바로 분석
+            if len(selected_channels) == 1:
+                channel_id = list(selected_channels.keys())[0]
+                channel_info = selected_channels[channel_id]
+                channel_name = channel_info['name']
+                video_count = len(channel_info['videos'])
+                
+                print(f"단일 채널 분석 시작: {channel_name} (선택된 영상: {video_count}개)")
+                self._open_channel_analysis(channel_id, channel_name)
+            
+            # 채널이 여러 개인 경우 선택 다이얼로그 표시
+            else:
+                print(f"다중 채널 선택 다이얼로그 표시: {len(selected_channels)}개 채널")
+                for ch_id, ch_info in selected_channels.items():
+                    print(f"  - {ch_info['name']}: {len(ch_info['videos'])}개 영상")
+                self._show_channel_selection_dialog(selected_channels)
+                
+        except Exception as e:
+            messagebox.showerror("오류", f"채널 분석 준비 중 오류가 발생했습니다: {str(e)}")
+            print(f"채널 분석 오류 상세: {e}")
+            import traceback
+            print(traceback.format_exc())
+    
+    def _show_channel_selection_dialog(self, channels):
+        """채널 선택 다이얼로그 표시"""
+        try:
+            dialog = ChannelSelectionDialog(self.root, channels, self._open_channel_analysis)
+            dialog.transient(self.root)
+            dialog.grab_set()
+        except Exception as e:
+            messagebox.showerror("오류", f"채널 선택 다이얼로그 생성 실패: {str(e)}")
+    
+    def _open_channel_analysis(self, channel_id, channel_name):
+        """채널 분석 다이얼로그 열기"""
+        try:
+            if not self.api_client:
+                messagebox.showerror("오류", "API 클라이언트가 초기화되지 않았습니다.")
+                return
+            
+            if not channel_id or not channel_name:
+                messagebox.showerror("오류", "채널 정보가 유효하지 않습니다.")
+                return
+                
+            print(f"채널 분석 시작: {channel_name} (ID: {channel_id})")
+            
+            dialog = EnhancedChannelAnalysisDialog(
+                self.root, 
+                channel_id, 
+                channel_name, 
+                self.api_client,
+                50,  # 기본 50개 영상 분석
+                "date"  # 최신순 정렬
+            )
+            dialog.transient(self.root)
+            dialog.grab_set()
+        except Exception as e:
+            messagebox.showerror("오류", f"채널 분석 다이얼로그 생성 실패: {str(e)}")
+            print(f"채널 분석 다이얼로그 오류: {e}")
+            import traceback
+            print(traceback.format_exc())
+
     def sort_treeview(self, col):
-        """트리뷰 정렬 - 업데이트된 버전 (영상 길이 정렬 포함)"""
+        """트리뷰 정렬"""
         # 정렬 상태 토글
         reverse = not self.sort_reverse.get(col, False)
         self.sort_reverse[col] = reverse
@@ -1847,23 +1247,23 @@ class ImprovedYouTubeAnalyzerGUI:
         
         # 컬럼별 정렬 로직
         if col == "순번":
-            data.sort(key=lambda x: int(x[0][0]), reverse=reverse)
+            data.sort(key=lambda x: int(x[0][1]), reverse=reverse)
         elif col == "업로드 날짜":
-            data.sort(key=lambda x: x[0][1], reverse=reverse)
+            data.sort(key=lambda x: x[0][2], reverse=reverse)
         elif col == "조회수":
-            data.sort(key=lambda x: int(str(x[0][2]).replace(',', '')), reverse=reverse)
+            data.sort(key=lambda x: int(str(x[0][3]).replace(',', '')), reverse=reverse)
         elif col == "제목":
-            data.sort(key=lambda x: x[0][3], reverse=reverse)
-        elif col == "채널":
             data.sort(key=lambda x: x[0][4], reverse=reverse)
+        elif col == "채널":
+            data.sort(key=lambda x: x[0][5], reverse=reverse)
         elif col == "영상 길이":
-            data.sort(key=lambda x: self._duration_to_seconds(x[0][5]), reverse=reverse)
+            data.sort(key=lambda x: self._duration_to_seconds(x[0][6]), reverse=reverse)
         elif col == "영상 유형":
-            data.sort(key=lambda x: x[0][6], reverse=reverse)
+            data.sort(key=lambda x: x[0][7], reverse=reverse)
         elif col == "Outlier점수":
-            data.sort(key=lambda x: float(str(x[0][7]).replace('x', '')), reverse=reverse)
+            data.sort(key=lambda x: float(str(x[0][8]).replace('x', '')), reverse=reverse)
         elif col == "참여도점수":
-            data.sort(key=lambda x: float(x[0][8]), reverse=reverse)
+            data.sort(key=lambda x: float(x[0][9]), reverse=reverse)
         
         # 정렬된 순서로 아이템 재배치
         for index, (values, item) in enumerate(data):
@@ -1874,7 +1274,545 @@ class ImprovedYouTubeAnalyzerGUI:
             if column == col:
                 sort_symbol = " ▼" if reverse else " ▲"
                 self.tree.heading(column, text=column + sort_symbol)
+            elif column != "선택":
+                self.tree.heading(column, text=column)
+    
+    def _duration_to_seconds(self, duration_str):
+        """시간 문자열을 초로 변환"""
+        try:
+            parts = duration_str.split(':')
+            if len(parts) == 2:  # MM:SS
+                return int(parts[0]) * 60 + int(parts[1])
+            elif len(parts) == 3:  # HH:MM:SS
+                return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
             else:
+                return 0
+        except:
+            return 0
+
+
+class EnhancedChannelAnalysisDialog(tk.Toplevel):
+    """향상된 채널 분석 다이얼로그"""
+    def __init__(self, parent, channel_id, channel_name, api_client, max_videos=50, sort_order="date"):
+        super().__init__(parent)
+        
+        try:
+            self.title(f"채널 분석 - {channel_name}")
+            self.geometry("1200x800")
+            self.configure(bg="#f0f0f0")
+            
+            # 데이터 초기화
+            self.channel_id = channel_id
+            self.channel_name = channel_name
+            self.api_client = api_client
+            self.max_videos = max_videos
+            self.sort_order = sort_order
+            self.channel_videos = []
+            self.channel_info = {}
+            self.selected_items = set()
+            self.channel_sort_reverse = {}  # 정렬 상태 추적 초기화
+            
+            # 입력 검증
+            if not channel_id or not channel_name or not api_client:
+                raise ValueError("필수 매개변수가 누락되었습니다")
+            
+            print(f"채널 분석 다이얼로그 초기화: {channel_name} (ID: {channel_id})")
+            
+            # UI 생성
+            self.create_widgets()
+            
+            # 채널 정보 및 영상 로드
+            self.load_channel_data()
+            
+        except Exception as e:
+            print(f"채널 분석 다이얼로그 초기화 오류: {e}")
+            messagebox.showerror("오류", f"채널 분석 다이얼로그 초기화 실패: {str(e)}")
+            self.destroy()
+    
+    def create_widgets(self):
+        """위젯 생성"""
+        # 상단 헤더 (채널 정보)
+        header_frame = tk.Frame(self, bg="white", height=120, relief='solid', bd=1)
+        header_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
+        header_frame.pack_propagate(False)
+        
+        # 채널 기본 정보
+        info_frame = tk.Frame(header_frame, bg="white")
+        info_frame.pack(side=tk.LEFT, fill=tk.Y, padx=20, pady=10)
+        
+        self.channel_title_label = tk.Label(info_frame, text=f"📺 {self.channel_name}",
+                                           font=("Arial", 18, "bold"),
+                                           bg="white", fg="#333333")
+        self.channel_title_label.pack(anchor=tk.W)
+        
+        self.channel_stats_label = tk.Label(info_frame, text="정보를 불러오는 중...",
+                                           font=("Arial", 12),
+                                           bg="white", fg="#666666")
+        self.channel_stats_label.pack(anchor=tk.W, pady=(5, 0))
+        
+        # 영상 목록 프레임
+        list_frame = tk.Frame(self, bg="white", relief='solid', bd=1)
+        list_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        
+        # 상단 컨트롤
+        control_frame = tk.Frame(list_frame, bg="white", height=40)
+        control_frame.pack(fill=tk.X, padx=20, pady=(10, 0))
+        control_frame.pack_propagate(False)
+        
+        tk.Label(control_frame, text="📹 채널 영상 목록",
+                font=("Arial", 14, "bold"),
+                bg="white", fg="#333333").pack(side=tk.LEFT, pady=10)
+        
+        self.video_count_label = tk.Label(control_frame, text="",
+                                         font=("Arial", 12),
+                                         bg="white", fg="#666666")
+        self.video_count_label.pack(side=tk.RIGHT, pady=10)
+        
+        # 트리뷰
+        columns = ("선택", "순위", "업로드일", "제목", "조회수", "좋아요", "댓글수", "영상유형", "길이", "성과점수")
+        
+        self.tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=15)
+        
+        # 컬럼 설정
+        column_widths = {
+            "선택": 50,
+            "순위": 50,
+            "업로드일": 100,
+            "제목": 300,
+            "조회수": 100,
+            "좋아요": 80,
+            "댓글수": 80,
+            "영상유형": 80,
+            "길이": 80,
+            "성과점수": 100
+        }
+        
+        for col in columns:
+            if col == "선택":
+                self.tree.heading(col, text=col)  # 선택 컬럼은 정렬 안함
+            else:
+                self.tree.heading(col, text=col, command=lambda c=col: self.sort_channel_treeview(c))
+            self.tree.column(col, width=column_widths.get(col, 100))
+        
+        # 정렬 상태 추적 추가
+        self.channel_sort_reverse = {}
+        
+        # 스크롤바
+        vsb = ttk.Scrollbar(list_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=vsb.set)
+        
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=20, pady=20)
+        vsb.pack(side=tk.RIGHT, fill=tk.Y, pady=20)
+        
+        # 클릭 이벤트
+        self.tree.bind("<Button-1>", self.on_item_click)
+        self.tree.bind("<Double-1>", self.on_video_double_click)
+        
+        # 버튼 프레임
+        button_frame = tk.Frame(self, bg="#f0f0f0", height=80, relief='solid', bd=1)
+        button_frame.pack(fill=tk.X, padx=10, pady=(5, 10))
+        button_frame.pack_propagate(False)
+        
+        # 버튼 컨테이너
+        button_container = tk.Frame(button_frame, bg="#f0f0f0")
+        button_container.pack(expand=True)
+        
+        # 선택 버튼들
+        tk.Button(button_container, text="모두 선택", 
+                 command=self.select_all, bg="#e0e0e0", fg="black",
+                 font=('Arial', 11), padx=10, pady=5).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(button_container, text="모두 해제", 
+                 command=self.deselect_all, bg="#e0e0e0", fg="black",
+                 font=('Arial', 11), padx=10, pady=5).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(button_container, text="상위 10개 선택", 
+                 command=self.select_top_10, bg="#e0e0e0", fg="black",
+                 font=('Arial', 11), padx=10, pady=5).pack(side=tk.LEFT, padx=5)
+        
+        # 다운로드 버튼들
+        tk.Button(button_container, text="썸네일 다운로드", 
+                 command=self.download_thumbnails, bg="#007AFF", fg="white",
+                 font=('Arial', 11, 'bold'), padx=15, pady=5).pack(side=tk.LEFT, padx=20)
+        
+        tk.Button(button_container, text="엑셀 추출", 
+                 command=self.export_to_excel, bg="#28A745", fg="white",
+                 font=('Arial', 11, 'bold'), padx=15, pady=5).pack(side=tk.LEFT, padx=5)
+        
+        # 닫기 버튼
+        tk.Button(button_container, text="닫기", 
+                 command=self.destroy, bg="#e0e0e0", fg="black",
+                 font=('Arial', 11), padx=20, pady=5).pack(side=tk.RIGHT, padx=10)
+        
+        # 진행 상태
+        self.progress_label = tk.Label(self, text="", 
+                                     font=("Arial", 11),
+                                     bg="#f0f0f0", fg="#666666")
+        self.progress_label.pack(pady=5)
+    
+    def load_channel_data(self):
+        """채널 정보 및 영상 로드"""
+        self.progress_label.config(text="채널 정보를 불러오는 중...")
+        
+        thread = threading.Thread(target=self._fetch_channel_data)
+        thread.daemon = True
+        thread.start()
+    
+    def _fetch_channel_data(self):
+        """채널 정보 및 영상 가져오기"""
+        try:
+            print(f"채널 데이터 가져오기 시작: {self.channel_name}")
+            
+            # 1. 채널 기본 정보 가져오기
+            try:
+                channel_info = self.api_client.get_channel_info(self.channel_id)
+                if channel_info:
+                    self.channel_info = channel_info
+                    self.after(0, self._update_channel_info)
+                    print("채널 기본 정보 로드 완료")
+                else:
+                    print("채널 기본 정보를 찾을 수 없음")
+            except Exception as e:
+                print(f"채널 기본 정보 로드 오류: {e}")
+                self.after(0, lambda: self.progress_label.config(text="⚠️ 채널 기본 정보 로드 실패"))
+            
+            # 2. 채널 영상 가져오기
+            try:
+                print(f"채널 영상 가져오기: 최대 {self.max_videos}개, 정렬: {self.sort_order}")
+                videos = self.api_client.get_channel_videos(
+                    self.channel_id, 
+                    max_results=self.max_videos,
+                    order=self.sort_order
+                )
+                
+                if videos:
+                    self.channel_videos = videos
+                    print(f"채널 영상 {len(videos)}개 로드 완료")
+                    
+                    # 3. 분석 수행
+                    analyzed_videos = self._analyze_videos(videos)
+                    self.channel_videos = analyzed_videos
+                    
+                    # UI 업데이트
+                    self.after(0, self._display_videos)
+                else:
+                    print("채널 영상을 찾을 수 없음")
+                    self.after(0, lambda: self.progress_label.config(text="❌ 채널 영상을 찾을 수 없습니다"))
+                    
+            except Exception as e:
+                print(f"채널 영상 로드 오류: {e}")
+                self.after(0, lambda: self.progress_label.config(text="❌ 채널 영상 로드 실패"))
+                self.after(0, lambda: messagebox.showerror("오류", f"채널 영상을 불러올 수 없습니다: {str(e)}"))
+            
+        except Exception as e:
+            error_msg = f"채널 데이터 로드 실패: {str(e)}"
+            print(error_msg)
+            self.after(0, lambda: self.progress_label.config(text="❌ 채널 데이터 로드 실패"))
+            self.after(0, lambda: messagebox.showerror("오류", error_msg))
+    
+    def _update_channel_info(self):
+        """채널 정보 업데이트"""
+        if not self.channel_info:
+            return
+        
+        snippet = self.channel_info['snippet']
+        stats = self.channel_info.get('statistics', {})
+        
+        # 채널 제목 업데이트
+        self.channel_title_label.config(text=f"📺 {snippet['title']}")
+        
+        # 통계 정보
+        subscriber_count = int(stats.get('subscriberCount', 0))
+        video_count = int(stats.get('videoCount', 0))
+        view_count = int(stats.get('viewCount', 0))
+        
+        stats_text = f"구독자: {subscriber_count:,}명 | 영상: {video_count:,}개 | 총 조회수: {view_count:,}"
+        self.channel_stats_label.config(text=stats_text)
+    
+    def _analyze_videos(self, videos):
+        """영상들 분석"""
+        if not videos:
+            return []
+        
+        # 채널 평균 통계 계산
+        view_counts = [video.get('view_count', 0) for video in videos]
+        avg_views = sum(view_counts) / len(view_counts) if view_counts else 1
+        
+        # 각 영상 분석
+        for i, video in enumerate(videos):
+            views = video.get('view_count', 0)
+            performance_score = (views / avg_views) if avg_views > 0 else 0
+            
+            video['performance_score'] = round(performance_score, 2)
+            video['rank'] = i + 1
+            
+            # 영상 유형
+            duration_seconds = self.api_client.parse_duration(video.get('duration', 'PT0S'))
+            video['video_type'] = "쇼츠" if duration_seconds <= 60 else "롱폼"
+            video['duration_seconds'] = duration_seconds
+        
+        return videos
+    
+    def _display_videos(self):
+        """영상 목록 표시"""
+        for video in self.channel_videos:
+            # 날짜 포맷
+            upload_date = video.get('published_at', '')[:10]
+            
+            # 조회수/좋아요/댓글 포맷
+            views = f"{video.get('view_count', 0):,}"
+            likes = f"{video.get('like_count', 0):,}"
+            comments = f"{video.get('comment_count', 0):,}"
+            
+            # 영상 유형과 길이
+            video_type = video.get('video_type', '알수없음')
+            duration = self.format_duration(video.get('duration_seconds', 0))
+            
+            # 성과 점수
+            performance = f"{video.get('performance_score', 0):.1f}x"
+            
+            # 제목 (길이 제한)
+            title = video['title']
+            if len(title) > 35:
+                title = title[:35] + "..."
+            
+            # 트리에 추가
+            item = self.tree.insert("", tk.END, 
+                                   values=("☐", video.get('rank', 0), upload_date, title,
+                                          views, likes, comments, video_type, duration, performance))
+        
+        # 상태 업데이트
+        self.video_count_label.config(text=f"총 {len(self.channel_videos)}개 영상")
+        self.progress_label.config(text="✅ 채널 분석 완료!")
+    
+    def format_duration(self, seconds):
+        """초를 시:분:초 형식으로 변환"""
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+        
+        if hours > 0:
+            return f"{hours}:{minutes:02d}:{secs:02d}"
+        else:
+            return f"{minutes}:{secs:02d}"
+    
+    def on_item_click(self, event):
+        """아이템 클릭 처리"""
+        region = self.tree.identify_region(event.x, event.y)
+        if region == "cell":
+            item = self.tree.identify_row(event.y)
+            column = self.tree.identify_column(event.x)
+            
+            # 선택 컬럼 클릭 시 체크박스 토글
+            if item and column == "#1":  # 첫 번째 컬럼
+                if item in self.selected_items:
+                    self.selected_items.remove(item)
+                    values = list(self.tree.item(item)['values'])
+                    values[0] = "☐"
+                    self.tree.item(item, values=values)
+                else:
+                    self.selected_items.add(item)
+                    values = list(self.tree.item(item)['values'])
+                    values[0] = "☑"
+                    self.tree.item(item, values=values)
+    
+    def on_video_double_click(self, event):
+        """영상 더블클릭 - YouTube에서 열기"""
+        item = self.tree.identify_row(event.y)
+        if item and item not in self.selected_items:
+            try:
+                item_values = self.tree.item(item)['values']
+                rank = int(item_values[1]) - 1
+                
+                if 0 <= rank < len(self.channel_videos):
+                    video_id = self.channel_videos[rank]['id']
+                    url = f"https://www.youtube.com/watch?v={video_id}"
+                    webbrowser.open(url)
+            except Exception as e:
+                print(f"영상 열기 오류: {e}")
+    
+    def select_all(self):
+        """모두 선택"""
+        for item in self.tree.get_children():
+            self.selected_items.add(item)
+            values = list(self.tree.item(item)['values'])
+            values[0] = "☑"
+            self.tree.item(item, values=values)
+    
+    def deselect_all(self):
+        """모두 해제"""
+        for item in self.tree.get_children():
+            if item in self.selected_items:
+                self.selected_items.remove(item)
+            values = list(self.tree.item(item)['values'])
+            values[0] = "☐"
+            self.tree.item(item, values=values)
+    
+    def select_top_10(self):
+        """상위 10개 선택"""
+        self.deselect_all()
+        
+        # 성과 점수 기준으로 정렬된 아이템들 가져오기
+        items_with_scores = []
+        for item in self.tree.get_children():
+            values = self.tree.item(item)['values']
+            performance_score = float(values[9].replace('x', ''))
+            items_with_scores.append((item, performance_score))
+        
+        # 성과 점수로 정렬
+        items_with_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        # 상위 10개 선택
+        for i, (item, score) in enumerate(items_with_scores[:10]):
+            self.selected_items.add(item)
+            values = list(self.tree.item(item)['values'])
+            values[0] = "☑"
+            self.tree.item(item, values=values)
+    
+    def download_thumbnails(self):
+        """선택한 영상의 썸네일 다운로드"""
+        if not self.selected_items:
+            messagebox.showwarning("알림", "다운로드할 영상을 선택해주세요.")
+            return
+        
+        # 선택된 영상 정보 수집
+        thumbnails_to_download = []
+        for item in self.selected_items:
+            item_values = self.tree.item(item)['values']
+            rank = int(item_values[1]) - 1
+            
+            if 0 <= rank < len(self.channel_videos):
+                video = self.channel_videos[rank]
+                thumbnails_to_download.append({
+                    'video_id': video['id'],
+                    'title': video['title'],
+                    'thumbnail_url': video.get('thumbnail_url', ''),
+                    'rank': rank + 1
+                })
+        
+        if thumbnails_to_download:
+            self.progress_label.config(text="썸네일 다운로드 중...")
+            
+            thread = threading.Thread(target=lambda: self._download_thumbnails(thumbnails_to_download))
+            thread.daemon = True
+            thread.start()
+    
+    def _download_thumbnails(self, thumbnails):
+        """썸네일 다운로드 실행"""
+        try:
+            result = self.api_client.download_multiple_thumbnails(thumbnails)
+            
+            self.after(0, lambda: messagebox.showinfo("완료", 
+                f"썸네일 다운로드 완료!\n"
+                f"성공: {len(result.get('downloaded_files', []))}개\n"
+                f"실패: {result.get('failed_count', 0)}개"))
+            
+        except Exception as e:
+            self.after(0, lambda: messagebox.showerror("오류", f"썸네일 다운로드 실패: {str(e)}"))
+        
+        self.after(0, lambda: self.progress_label.config(text=""))
+    
+    def export_to_excel(self):
+        """채널 분석 결과를 엑셀로 내보내기"""
+        if not self.channel_videos:
+            messagebox.showwarning("알림", "내보낼 데이터가 없습니다.")
+            return
+        
+        filename = filedialog.asksaveasfilename(
+            defaultextension=".xlsx",
+            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+            title="채널 분석 결과 저장",
+            initialvalue=f"{self.channel_name}_analysis.xlsx"
+        )
+        
+        if filename:
+            try:
+                # 엑셀 생성
+                excel_gen = ExcelGenerator(filename)
+                
+                # 데이터 준비 (채널 분석용으로 변환)
+                analysis_data = []
+                for video in self.channel_videos:
+                    video_data = {
+                        'snippet': {
+                            'title': video['title'],
+                            'channelTitle': self.channel_name,
+                            'publishedAt': video['published_at'],
+                            'description': video.get('description', '')
+                        },
+                        'statistics': {
+                            'viewCount': str(video.get('view_count', 0)),
+                            'likeCount': str(video.get('like_count', 0)),
+                            'commentCount': str(video.get('comment_count', 0))
+                        },
+                        'contentDetails': {
+                            'duration': f"PT{video.get('duration_seconds', 0)}S"
+                        },
+                        'analysis': {
+                            'video_type': video.get('video_type', '알수없음'),
+                            'performance_score': video.get('performance_score', 0),
+                            'formatted_duration': self.format_duration(video.get('duration_seconds', 0))
+                        },
+                        'id': video['id'],
+                        'rank': video.get('rank', 0)
+                    }
+                    analysis_data.append(video_data)
+                
+                settings = {
+                    'mode': 'channel_analysis',
+                    'channel_name': self.channel_name,
+                    'channel_id': self.channel_id,
+                    'video_count': len(self.channel_videos),
+                    'analysis_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }
+                excel_gen.create_excel_file(analysis_data, settings)
+                
+                messagebox.showinfo("성공", f"채널 분석 결과가 저장되었습니다:\n{filename}")
+            except Exception as e:
+                messagebox.showerror("오류", f"엑셀 저장 실패: {str(e)}")
+    
+    def sort_channel_treeview(self, col):
+        """채널 분석 트리뷰 정렬"""
+        # 정렬 상태 토글
+        reverse = not self.channel_sort_reverse.get(col, False)
+        self.channel_sort_reverse[col] = reverse
+        
+        # 데이터 가져오기
+        data = []
+        for item in self.tree.get_children():
+            values = self.tree.item(item)['values']
+            data.append((values, item))
+        
+        # 컬럼별 정렬 로직
+        if col == "순위":
+            data.sort(key=lambda x: int(x[0][1]), reverse=reverse)
+        elif col == "업로드일":
+            data.sort(key=lambda x: x[0][2], reverse=reverse)
+        elif col == "제목":
+            data.sort(key=lambda x: x[0][3], reverse=reverse)
+        elif col == "조회수":
+            data.sort(key=lambda x: int(str(x[0][4]).replace(',', '')), reverse=reverse)
+        elif col == "좋아요":
+            data.sort(key=lambda x: int(str(x[0][5]).replace(',', '')), reverse=reverse)
+        elif col == "댓글수":
+            data.sort(key=lambda x: int(str(x[0][6]).replace(',', '')), reverse=reverse)
+        elif col == "영상유형":
+            data.sort(key=lambda x: x[0][7], reverse=reverse)
+        elif col == "길이":
+            data.sort(key=lambda x: self._duration_to_seconds(x[0][8]), reverse=reverse)
+        elif col == "성과점수":
+            data.sort(key=lambda x: float(str(x[0][9]).replace('x', '')), reverse=reverse)
+        
+        # 정렬된 순서로 아이템 재배치
+        for index, (values, item) in enumerate(data):
+            self.tree.move(item, '', index)
+        
+        # 헤더에 정렬 표시
+        for column in self.tree['columns']:
+            if column == col:
+                sort_symbol = " ▼" if reverse else " ▲"
+                self.tree.heading(column, text=column + sort_symbol)
+            elif column != "선택":  # 선택 컬럼은 제외
                 self.tree.heading(column, text=column)
     
     def _duration_to_seconds(self, duration_str):
@@ -1889,3 +1827,10 @@ class ImprovedYouTubeAnalyzerGUI:
                 return 0
         except:
             return 0
+
+
+# 메인 실행
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = ImprovedYouTubeAnalyzerGUI(root)
+    root.mainloop()
