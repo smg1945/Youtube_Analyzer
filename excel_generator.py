@@ -87,11 +87,11 @@ class ExcelGenerator:
                 api_client = YouTubeAPIClient()
                 duration_seconds = api_client.parse_duration(content_details.get('duration', 'PT0S'))
             except:
-                pass
+                duration_seconds = analysis.get('duration_seconds', 0)
             
             # 영상 유형 상세 정보
             video_type = analysis.get('video_type', '알수없음')
-            video_type_detail = f"{video_type} ({analysis.get('formatted_duration', '00:00')})"
+            formatted_duration = analysis.get('formatted_duration', '00:00')
             
             row = {
                 '순위': video_data.get('rank', 0),
@@ -99,14 +99,14 @@ class ExcelGenerator:
                 '제목': snippet.get('title', ''),
                 '채널명': snippet.get('channelTitle', ''),
                 '영상유형': video_type,
-                '영상길이': analysis.get('formatted_duration', '00:00'),
+                '영상길이': formatted_duration,
                 '영상길이_초': duration_seconds,
                 '조회수': int(statistics.get('viewCount', 0)),
                 '좋아요': int(statistics.get('likeCount', 0)),
                 '댓글수': int(statistics.get('commentCount', 0)),
                 'Outlier점수': analysis.get('outlier_score', 1.0),
                 'Outlier등급': analysis.get('outlier_category', '😐 평균'),
-                '채널평균조회수': int(analysis.get('channel_avg_views', 0)),
+                '채널평균조회수': analysis.get('channel_avg_views', 0),
                 '업로드일시': self._format_datetime(snippet.get('publishedAt', '')),
                 '카테고리': config.YOUTUBE_CATEGORIES.get(snippet.get('categoryId', ''), '기타'),
                 '핵심키워드': ', '.join(analysis.get('keywords', [])),
@@ -144,8 +144,12 @@ class ExcelGenerator:
         for col_num, value in enumerate(df.columns.values):
             worksheet.write(0, col_num, value, header_format)
         
+        # 행 높이 설정 (썸네일 때문에) - 수정된 부분
+        worksheet.set_default_row(config.THUMBNAIL_ROW_HEIGHT)  # 기본 행 높이
+        
         # 데이터 행 포매팅 (영상 유형별 색상)
         for row_num in range(1, len(df) + 1):
+            worksheet.set_row(row_num, 80)
             video_type = df.iloc[row_num-1]['영상유형']
             row_format = shorts_format if video_type == '쇼츠' else long_format if video_type == '롱폼' else None
             
@@ -180,9 +184,6 @@ class ExcelGenerator:
         
         for col, width in column_widths.items():
             worksheet.set_column(f'{col}:{col}', width)
-        
-        # 행 높이 설정 (썸네일 때문에)
-        worksheet.set_default_row(config.THUMBNAIL_ROW_HEIGHT)
         
         # 숫자 포맷 적용
         worksheet.set_column('H:J', 12, number_format)  # 조회수, 좋아요, 댓글수

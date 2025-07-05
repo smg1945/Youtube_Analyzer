@@ -47,10 +47,10 @@ LONG_VIDEO_MIN_DURATION = 60   # 롱폼 최소 길이 (초)
 COMMENTS_PER_VIDEO = 0  # 댓글 분석 비활성화로 속도 향상
 KEYWORD_EXTRACTION_COUNT = 5  # 키워드 추출 개수
 
-# 엑셀 출력 설정
+# 엑셀 출력 설정 부분에서 썸네일 행 높이 증가:
 EXCEL_FILENAME_FORMAT = "YouTube_Analysis_{region}_{timestamp}.xlsx"
 THUMBNAIL_COLUMN_WIDTH = 15
-THUMBNAIL_ROW_HEIGHT = 80
+THUMBNAIL_ROW_HEIGHT = 80  # 기존 80에서 더 크게 변경
 
 # 썸네일 다운로드 설정
 THUMBNAIL_DOWNLOAD_TIMEOUT = 5  # 타임아웃 감소
