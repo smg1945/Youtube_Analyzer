@@ -332,24 +332,74 @@ class TextAnalyzer:
         """언어별 불용어 로드"""
         stopwords = {
             'ko': {
-                '것', '수', '내', '거', '때문', '위해', '통해', '따라', '대해', 
-                '에서', '으로', '에게', '이것', '그것', '저것', '여기', '거기', 
-                '저기', '지금', '그때', '이때', '오늘', '어제', '내일', '년', 
-                '월', '일', '시간', '분', '초', '때', '동안', '사이', '다음',
-                '이전', '전체', '부분', '모든', '각각', '하나', '둘', '셋'
+                # 조사, 어미
+                '이', '가', '을', '를', '에', '에서', '으로', '로', '와', '과', '의', '도', '만', '까지', '부터',
+                '하고', '이나', '나', '든지', '라서', '어서', '므로', '때문에', '위해', '통해', '따라', '대해',
+                
+                # 대명사, 지시어
+                '것', '수', '내', '거', '이것', '그것', '저것', '여기', '거기', '저기', '이곳', '그곳', '저곳',
+                '이렇게', '그렇게', '저렇게', '어떻게', '왜', '언제', '어디', '누구', '무엇',
+                
+                # 시간 관련
+                '지금', '그때', '이때', '오늘', '어제', '내일', '모레', '글피', '년', '월', '일', '시간', '분', '초',
+                '때', '동안', '사이', '다음', '이전', '전체', '부분', '모든', '각각', '하나', '둘', '셋',
+                
+                # 동사, 형용사 어간
+                '하다', '되다', '있다', '없다', '이다', '아니다', '같다', '다르다', '크다', '작다', '많다', '적다',
+                '좋다', '나쁘다', '새로다', '오래다', '빠르다', '느리다', '높다', '낮다',
+                
+                # 부사
+                '매우', '아주', '정말', '진짜', '너무', '조금', '약간', '완전', '전혀', '거의', '아마',
+                '확실히', '분명히', '당연히', '역시', '또한', '그리고', '하지만', '그러나', '그런데',
+                
+                # 감탄사, 호칭
+                '아', '어', '오', '우', '음', '응', '네', '예', '아니', '맞다', '틀리다',
+                
+                # YouTube 관련 불용어
+                '영상', '동영상', '유튜브', '구독', '좋아요', '댓글', '공유', '알림', '채널', '재생',
+                '조회수', '업로드', '링크', '설명', '더보기', '클릭', '시청', '감사합니다'
             },
             'en': {
-                'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 
-                'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 
-                'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 
-                'will', 'would', 'could', 'should', 'may', 'might', 'must', 
-                'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 
-                'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
-                'my', 'your', 'his', 'her', 'its', 'our', 'their'
+                # Articles
+                'the', 'a', 'an',
+                
+                # Conjunctions
+                'and', 'or', 'but', 'if', 'while', 'because', 'since', 'although', 'though', 'unless',
+                'until', 'when', 'where', 'why', 'how', 'that', 'which', 'who', 'whom', 'whose',
+                
+                # Prepositions
+                'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'from', 'about', 'into', 'through',
+                'during', 'before', 'after', 'above', 'below', 'up', 'down', 'out', 'off', 'over',
+                'under', 'again', 'further', 'then', 'once', 'here', 'there', 'everywhere', 'anywhere',
+                
+                # Pronouns
+                'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them',
+                'my', 'your', 'his', 'her', 'its', 'our', 'their', 'mine', 'yours', 'hers', 'ours', 'theirs',
+                'this', 'that', 'these', 'those', 'what', 'which', 'who', 'whom', 'whose', 'where', 'when',
+                
+                # Verbs
+                'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'having',
+                'do', 'does', 'did', 'doing', 'will', 'would', 'could', 'should', 'may', 'might',
+                'must', 'can', 'shall', 'ought', 'need', 'dare',
+                
+                # Adverbs
+                'not', 'no', 'yes', 'very', 'too', 'so', 'just', 'now', 'only', 'also', 'well',
+                'still', 'even', 'never', 'always', 'often', 'sometimes', 'usually', 'really',
+                'quite', 'rather', 'pretty', 'fairly', 'extremely', 'absolutely',
+                
+                # Others
+                'all', 'any', 'some', 'each', 'every', 'both', 'either', 'neither', 'none', 'one',
+                'two', 'three', 'first', 'second', 'third', 'last', 'next', 'other', 'another',
+                'much', 'many', 'more', 'most', 'less', 'least', 'few', 'little', 'big', 'small',
+                'new', 'old', 'good', 'bad', 'best', 'worst', 'better', 'worse',
+                
+                # YouTube related stopwords
+                'video', 'youtube', 'subscribe', 'like', 'comment', 'share', 'notification', 'channel',
+                'watch', 'view', 'views', 'upload', 'link', 'description', 'click', 'thanks', 'thank'
             }
         }
         
-        return stopwords
+        return stopwords.get(language, set())
     
     def get_language_support_info(self):
         """언어 지원 정보 반환"""

@@ -346,22 +346,197 @@ class ThumbnailDownloader:
             if not file_paths:
                 return None
             
+            from datetime import datetime
+            import zipfile
+            import os
+            
+            # ZIP 파일명 생성
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             zip_filename = self.output_dir / f"thumbnails_{timestamp}.zip"
             
-            with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                for file_path in file_paths:
-                    file_path = Path(file_path)
-                    if file_path.exists():
-                        # ZIP 내에서는 파일명만 사용
-                        arcname = file_path.name
-                        zipf.write(file_path, arcname)
+            print(f"📦 ZIP 파일 생성 중: {zip_filename}")
             
-            return str(zip_filename)
+            # ZIP 파일 생성
+            with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as zipf:
+                total_files = len(file_paths)
+                compressed_size = 0
+                original_size = 0
+                
+                for i, file_path in enumerate(file_paths):
+                    try:
+                        if os.path.exists(file_path):
+                            # 파일 크기 기록
+                            file_size = os.path.getsize(file_path)
+                            original_size += file_size
+                            
+                            # ZIP에 파일 추가 (경로 구조 유지하지 않고 파일명만)
+                            arcname = os.path.basename(file_path)
+                            zipf.write(file_path, arcname)
+                            
+                            # 진행률 표시
+                            progress = ((i + 1) / total_files) * 100
+                            print(f"📁 압축 중... {i+1}/{total_files} ({progress:.1f}%)")
+                            
+                        else:
+                            print(f"⚠️ 파일을 찾을 수 없습니다: {file_path}")
+                            
+                    except Exception as e:
+                        print(f"❌ 파일 압축 오류 ({file_path}): {e}")
+                        continue
             
+            # ZIP 파일 크기 확인
+            if os.path.exists(zip_filename):
+                compressed_size = os.path.getsize(zip_filename)
+                compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
+                
+                print(f"✅ ZIP 파일 생성 완료!")
+                print(f"   파일 위치: {zip_filename}")
+                print(f"   압축된 파일 수: {len(file_paths)}개")
+                print(f"   원본 크기: {self._format_file_size(original_size)}")
+                print(f"   압축 크기: {self._format_file_size(compressed_size)}")
+                print(f"   압축률: {compression_ratio:.1f}%")
+                
+                return {
+                    'success': True,
+                    'zip_path': str(zip_filename),
+                    'file_count': len(file_paths),
+                    'original_size': original_size,
+                    'compressed_size': compressed_size,
+                    'compression_ratio': round(compression_ratio, 1)
+                }
+            else:
+                return {'success': False, 'error': 'ZIP 파일이 생성되지 않았습니다'}
+                
         except Exception as e:
-            print(f"ZIP 파일 생성 오류: {e}")
-            return None
+            print(f"❌ ZIP 파일 생성 실패: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def _format_file_size(self, bytes_value):
+        """파일 크기를 읽기 쉬운 형태로 포맷"""
+        if bytes_value == 0:
+            return "0 B"
+        
+        size_names = ["B", "KB", "MB", "GB"]
+        import math
+        
+        i = int(math.floor(math.log(bytes_value, 1024)))
+        p = math.pow(1024, i)
+        s = round(bytes_value / p, 2)
+        
+        return f"{s} {size_names[i]}"
+
+    def create_thumbnail_comparison_grid(self, file_paths, grid_size=(4, 4), output_filename=None):
+        """썸네일들을 그리드 형태로 합성"""
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+            import math
+            
+            if not file_paths:
+                return {'success': False, 'error': '합성할 파일이 없습니다'}
+            
+            # 그리드 설정
+            cols, rows = grid_size
+            max_images = cols * rows
+            
+            # 파일 수 제한
+            if len(file_paths) > max_images:
+                file_paths = file_paths[:max_images]
+                print(f"⚠️ 이미지 수 제한: {max_images}개로 제한됨")
+            
+            # 썸네일 크기 설정
+            thumb_width, thumb_height = 320, 180  # 16:9 비율
+            margin = 10
+            
+            # 전체 캔버스 크기 계산
+            canvas_width = cols * thumb_width + (cols + 1) * margin
+            canvas_height = rows * thumb_height + (rows + 1) * margin + 50  # 제목 공간
+            
+            # 배경 생성
+            canvas = Image.new('RGB', (canvas_width, canvas_height), color='#f5f5f7')
+            draw = ImageDraw.Draw(canvas)
+            
+            # 제목 추가
+            try:
+                # 시스템 기본 폰트 사용
+                font_large = ImageFont.load_default()
+                font_small = ImageFont.load_default()
+            except:
+                font_large = font_small = None
+            
+            title = f"썸네일 비교 ({len(file_paths)}개)"
+            if font_large:
+                bbox = draw.textbbox((0, 0), title, font=font_large)
+                text_width = bbox[2] - bbox[0]
+                draw.text(((canvas_width - text_width) // 2, 15), title, 
+                        fill='#1d1d1f', font=font_large)
+            
+            # 이미지 배치
+            placed_count = 0
+            for i, file_path in enumerate(file_paths):
+                if placed_count >= max_images:
+                    break
+                    
+                try:
+                    # 위치 계산
+                    row = placed_count // cols
+                    col = placed_count % cols
+                    
+                    x = margin + col * (thumb_width + margin)
+                    y = 50 + margin + row * (thumb_height + margin)
+                    
+                    # 이미지 로드 및 리사이즈
+                    if os.path.exists(file_path):
+                        img = Image.open(file_path)
+                        img = img.resize((thumb_width, thumb_height), Image.Resampling.LANCZOS)
+                        
+                        # 캔버스에 붙여넣기
+                        canvas.paste(img, (x, y))
+                        
+                        # 파일명 추가 (선택사항)
+                        filename = os.path.basename(file_path)
+                        if len(filename) > 20:
+                            filename = filename[:17] + "..."
+                        
+                        if font_small:
+                            draw.text((x + 5, y + thumb_height - 20), filename, 
+                                    fill='white', font=font_small)
+                        
+                        placed_count += 1
+                        
+                    else:
+                        print(f"⚠️ 파일을 찾을 수 없습니다: {file_path}")
+                        
+                except Exception as e:
+                    print(f"❌ 이미지 처리 오류 ({file_path}): {e}")
+                    continue
+            
+            # 결과 파일 저장
+            if output_filename is None:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_filename = f"thumbnail_grid_{timestamp}.png"
+            
+            output_path = self.output_dir / output_filename
+            canvas.save(output_path, 'PNG', quality=95, optimize=True)
+            
+            print(f"✅ 썸네일 그리드 생성 완료!")
+            print(f"   파일: {output_path}")
+            print(f"   그리드: {cols}x{rows}")
+            print(f"   배치된 이미지: {placed_count}개")
+            print(f"   캔버스 크기: {canvas_width}x{canvas_height}")
+            
+            return {
+                'success': True,
+                'output_path': str(output_path),
+                'grid_size': grid_size,
+                'images_placed': placed_count,
+                'canvas_size': (canvas_width, canvas_height),
+                'file_size': os.path.getsize(output_path)
+            }
+            
+        except ImportError:
+            return {'success': False, 'error': 'PIL(Pillow) 라이브러리가 필요합니다'}
+        except Exception as e:
+            return {'success': False, 'error': f'그리드 생성 오류: {str(e)}'}
     
     def resize_existing_images(self, target_size, quality=90):
         """

@@ -484,17 +484,249 @@ class StatisticsCalculator:
         n = len(x_values)
         sum_x = sum(x_values)
         sum_y = sum(y_values)
+        sum_x_sq = sum(x * x for x in x_values)
+        sum_y_sq = sum(y * y for y in y_values)
         sum_xy = sum(x * y for x, y in zip(x_values, y_values))
-        sum_x2 = sum(x ** 2 for x in x_values)
-        sum_y2 = sum(y ** 2 for y in y_values)
         
+        # 피어슨 상관계수 공식
         numerator = n * sum_xy - sum_x * sum_y
-        denominator = math.sqrt((n * sum_x2 - sum_x ** 2) * (n * sum_y2 - sum_y ** 2))
+        denominator_x = n * sum_x_sq - sum_x * sum_x
+        denominator_y = n * sum_y_sq - sum_y * sum_y
+        
+        if denominator_x <= 0 or denominator_y <= 0:
+            return 0
+        
+        denominator = math.sqrt(denominator_x * denominator_y)
         
         if denominator == 0:
             return 0
         
-        return numerator / denominator
+        correlation = numerator / denominator
+        
+        # -1과 1 사이로 제한 (부동소수점 오차 방지)
+        correlation = max(-1, min(1, correlation))
+        
+        return round(correlation, 4)
+
+    def calculate_correlation_matrix(self, data_dict):
+        """여러 변수 간의 상관관계 매트릭스 계산"""
+        try:
+            variables = list(data_dict.keys())
+            n_vars = len(variables)
+            
+            if n_vars < 2:
+                return {}
+            
+            # 상관관계 매트릭스 초기화
+            correlation_matrix = {}
+            
+            for i, var1 in enumerate(variables):
+                correlation_matrix[var1] = {}
+                
+                for j, var2 in enumerate(variables):
+                    if i == j:
+                        # 자기 자신과의 상관관계는 1
+                        correlation_matrix[var1][var2] = 1.0
+                    elif j > i:
+                        # 상관계수 계산
+                        values1 = data_dict[var1]
+                        values2 = data_dict[var2]
+                        
+                        # 데이터 길이 맞추기
+                        min_length = min(len(values1), len(values2))
+                        values1 = values1[:min_length]
+                        values2 = values2[:min_length]
+                        
+                        correlation = self._calculate_pearson_correlation(values1, values2)
+                        correlation_matrix[var1][var2] = correlation
+                        
+                        # 대칭 매트릭스이므로 반대편도 설정
+                        if var2 not in correlation_matrix:
+                            correlation_matrix[var2] = {}
+                        correlation_matrix[var2][var1] = correlation
+                    else:
+                        # 이미 계산된 값 사용 (대칭성)
+                        if var2 in correlation_matrix and var1 in correlation_matrix[var2]:
+                            correlation_matrix[var1][var2] = correlation_matrix[var2][var1]
+            
+            return correlation_matrix
+            
+        except Exception as e:
+            print(f"상관관계 매트릭스 계산 오류: {e}")
+            return {}
+
+    def interpret_correlation(self, correlation_value):
+        """상관계수 해석"""
+        abs_corr = abs(correlation_value)
+        
+        if abs_corr >= 0.9:
+            strength = "매우 강한"
+        elif abs_corr >= 0.7:
+            strength = "강한"
+        elif abs_corr >= 0.5:
+            strength = "보통"
+        elif abs_corr >= 0.3:
+            strength = "약한"
+        else:
+            strength = "매우 약한"
+        
+        direction = "양의" if correlation_value > 0 else "음의"
+        
+        return {
+            'strength': strength,
+            'direction': direction,
+            'interpretation': f"{direction} {strength} 상관관계"
+        }
+
+    def calculate_regression_analysis(self, x_values, y_values):
+        """단순 선형 회귀 분석"""
+        try:
+            if len(x_values) != len(y_values) or len(x_values) < 2:
+                return {}
+            
+            n = len(x_values)
+            sum_x = sum(x_values)
+            sum_y = sum(y_values)
+            sum_x_sq = sum(x * x for x in x_values)
+            sum_xy = sum(x * y for x, y in zip(x_values, y_values))
+            
+            # 기울기 (slope) 계산
+            denominator = n * sum_x_sq - sum_x * sum_x
+            if denominator == 0:
+                return {}
+            
+            slope = (n * sum_xy - sum_x * sum_y) / denominator
+            
+            # 절편 (intercept) 계산
+            intercept = (sum_y - slope * sum_x) / n
+            
+            # R-squared 계산
+            correlation = self._calculate_pearson_correlation(x_values, y_values)
+            r_squared = correlation ** 2
+            
+            # 예측값 계산
+            predicted_values = [slope * x + intercept for x in x_values]
+            
+            # 잔차 계산
+            residuals = [y - pred for y, pred in zip(y_values, predicted_values)]
+            
+            # 평균 제곱 오차 (MSE) 계산
+            mse = sum(r ** 2 for r in residuals) / n
+            rmse = math.sqrt(mse)
+            
+            return {
+                'slope': round(slope, 4),
+                'intercept': round(intercept, 4),
+                'correlation': round(correlation, 4),
+                'r_squared': round(r_squared, 4),
+                'mse': round(mse, 4),
+                'rmse': round(rmse, 4),
+                'equation': f"y = {slope:.4f}x + {intercept:.4f}",
+                'predicted_values': predicted_values,
+                'residuals': residuals
+            }
+            
+        except Exception as e:
+            print(f"회귀 분석 오류: {e}")
+            return {}
+
+    def calculate_outlier_detection(self, values, method='iqr'):
+        """이상치 탐지"""
+        try:
+            if not values or len(values) < 4:
+                return {'outliers': [], 'outlier_indices': []}
+            
+            outliers = []
+            outlier_indices = []
+            
+            if method == 'iqr':
+                # IQR 방법
+                sorted_values = sorted(values)
+                q1 = self._calculate_percentile(sorted_values, 25)
+                q3 = self._calculate_percentile(sorted_values, 75)
+                iqr = q3 - q1
+                
+                lower_bound = q1 - 1.5 * iqr
+                upper_bound = q3 + 1.5 * iqr
+                
+                for i, value in enumerate(values):
+                    if value < lower_bound or value > upper_bound:
+                        outliers.append(value)
+                        outlier_indices.append(i)
+            
+            elif method == 'zscore':
+                # Z-score 방법
+                mean_val = sum(values) / len(values)
+                std_dev = self._calculate_std_dev(values)
+                
+                if std_dev > 0:
+                    for i, value in enumerate(values):
+                        z_score = abs((value - mean_val) / std_dev)
+                        if z_score > 2.5:  # 2.5 표준편차 이상
+                            outliers.append(value)
+                            outlier_indices.append(i)
+            
+            return {
+                'outliers': outliers,
+                'outlier_indices': outlier_indices,
+                'outlier_count': len(outliers),
+                'outlier_percentage': round((len(outliers) / len(values)) * 100, 2),
+                'method': method
+            }
+            
+        except Exception as e:
+            print(f"이상치 탐지 오류: {e}")
+            return {'outliers': [], 'outlier_indices': []}
+
+    def calculate_trend_analysis(self, time_series_data):
+        """시계열 트렌드 분석"""
+        try:
+            if not time_series_data or len(time_series_data) < 3:
+                return {}
+            
+            values = [point['value'] for point in time_series_data]
+            x_values = list(range(len(values)))
+            
+            # 선형 트렌드 계산
+            regression = self.calculate_regression_analysis(x_values, values)
+            
+            # 트렌드 방향 판단
+            slope = regression.get('slope', 0)
+            if slope > 0.1:
+                trend_direction = 'increasing'
+                trend_strength = 'strong' if slope > 1 else 'moderate'
+            elif slope < -0.1:
+                trend_direction = 'decreasing'
+                trend_strength = 'strong' if slope < -1 else 'moderate'
+            else:
+                trend_direction = 'stable'
+                trend_strength = 'none'
+            
+            # 변화율 계산
+            if len(values) >= 2:
+                first_value = values[0]
+                last_value = values[-1]
+                total_change = ((last_value - first_value) / first_value * 100) if first_value != 0 else 0
+                period_count = len(values) - 1
+                avg_period_change = total_change / period_count if period_count > 0 else 0
+            else:
+                total_change = 0
+                avg_period_change = 0
+            
+            return {
+                'trend_direction': trend_direction,
+                'trend_strength': trend_strength,
+                'slope': slope,
+                'r_squared': regression.get('r_squared', 0),
+                'total_change_percent': round(total_change, 2),
+                'avg_period_change_percent': round(avg_period_change, 2),
+                'regression_equation': regression.get('equation', ''),
+                'data_points': len(values)
+            }
+            
+        except Exception as e:
+            print(f"트렌드 분석 오류: {e}")
+            return {}
     
     def _classify_correlation_strength(self, correlation):
         """상관관계 강도 분류"""

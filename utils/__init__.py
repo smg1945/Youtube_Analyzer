@@ -216,3 +216,132 @@ def measure_execution_time(func):
         return result
     
     return wrapper
+
+def format_bytes(bytes_value):
+    """바이트를 읽기 쉬운 형태로 포맷"""
+    if bytes_value == 0:
+        return "0 B"
+    
+    size_names = ["B", "KB", "MB", "GB", "TB"]
+    import math
+    
+    i = int(math.floor(math.log(bytes_value, 1024)))
+    p = math.pow(1024, i)
+    s = round(bytes_value / p, 2)
+    
+    return f"{s} {size_names[i]}"
+
+def generate_timestamp(format_type='full'):
+    """타임스탬프 생성"""
+    from datetime import datetime
+    
+    now = datetime.now()
+    
+    formats = {
+        'full': '%Y%m%d_%H%M%S',
+        'date': '%Y%m%d',
+        'time': '%H%M%S',
+        'readable': '%Y-%m-%d %H:%M:%S',
+        'filename': '%Y%m%d_%H%M%S'
+    }
+    
+    return now.strftime(formats.get(format_type, formats['full']))
+
+def retry_on_failure(max_attempts=3, delay=1, backoff_factor=2):
+    """재시도 데코레이터"""
+    import time
+    import functools
+    
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            
+            for attempt in range(max_attempts):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    
+                    if attempt < max_attempts - 1:
+                        wait_time = delay * (backoff_factor ** attempt)
+                        print(f"재시도 {attempt + 1}/{max_attempts}: {wait_time}초 후 다시 시도...")
+                        time.sleep(wait_time)
+                    else:
+                        print(f"최대 재시도 횟수 초과: {func.__name__}")
+            
+            # 모든 재시도 실패 시 마지막 예외 발생
+            raise last_exception
+        
+        return wrapper
+    return decorator
+
+def hash_string(text, algorithm='md5'):
+    """문자열 해시 생성"""
+    import hashlib
+    
+    hash_algorithms = {
+        'md5': hashlib.md5,
+        'sha1': hashlib.sha1,
+        'sha256': hashlib.sha256,
+        'sha512': hashlib.sha512
+    }
+    
+    if algorithm not in hash_algorithms:
+        raise ValueError(f"지원하지 않는 해시 알고리즘: {algorithm}")
+    
+    hash_func = hash_algorithms[algorithm]
+    return hash_func(text.encode('utf-8')).hexdigest()
+
+def deep_merge_dicts(dict1, dict2):
+    """딕셔너리 깊은 병합"""
+    result = dict1.copy()
+    
+    for key, value in dict2.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge_dicts(result[key], value)
+        else:
+            result[key] = value
+    
+    return result
+
+def chunks(lst, chunk_size):
+    """리스트를 지정된 크기로 분할"""
+    for i in range(0, len(lst), chunk_size):
+        yield lst[i:i + chunk_size]
+
+def flatten_list(nested_list):
+    """중첩 리스트를 평면화"""
+    result = []
+    for item in nested_list:
+        if isinstance(item, list):
+            result.extend(flatten_list(item))
+        else:
+            result.append(item)
+    return result
+
+def get_memory_usage():
+    """현재 메모리 사용량 반환 (MB)"""
+    import psutil
+    import os
+    
+    try:
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        return round(memory_info.rss / 1024 / 1024, 2)  # MB 단위
+    except ImportError:
+        return None  # psutil이 설치되지 않은 경우
+
+def create_progress_indicator(total, prefix='진행률'):
+    """진행률 표시기 생성"""
+    def update_progress(current):
+        percentage = (current / total) * 100
+        bar_length = 30
+        filled_length = int(bar_length * current // total)
+        bar = '█' * filled_length + '░' * (bar_length - filled_length)
+        print(f'\r{prefix}: [{bar}] {current}/{total} ({percentage:.1f}%)', end='', flush=True)
+        
+        if current >= total:
+            print()  # 완료 시 줄바꿈
+    
+    return update_progress

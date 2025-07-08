@@ -723,21 +723,56 @@ def extract_transcript_keywords(transcript_files: List[str], language='ko'):
         
         # 텍스트 분석
         keyword_freq = analyzer.analyze_keyword_frequency(all_texts)
-        trending_keywords = analyzer.extract_trending_keywords(all_texts, max_keywords=30)
-        text_patterns = analyzer.analyze_text_patterns(all_texts)
+        trending_keywords = analyzer.find_trending_keywords(all_texts)
         
-        return {
+        # 고빈도 키워드 추출 (상위 20개)
+        top_keywords = sorted(keyword_freq.items(), key=lambda x: x[1], reverse=True)[:20]
+        
+        # 키워드 클러스터링
+        keyword_clusters = analyzer.cluster_similar_keywords([kw[0] for kw in top_keywords])
+        
+        # 감정 분석 (한국어만)
+        sentiment_analysis = None
+        if language == 'ko':
+            try:
+                sentiment_analysis = analyzer.analyze_sentiment_distribution(all_texts)
+            except Exception as e:
+                print(f"감정 분석 오류: {e}")
+        
+        # 결과 구성
+        result = {
             'success': True,
-            'total_transcripts': len(all_texts),
-            'keyword_frequency': keyword_freq,
+            'total_transcripts': len(transcript_files),
+            'processed_transcripts': len(all_texts),
+            'total_words': sum(len(text.split()) for text in all_texts),
+            'keyword_frequency': dict(top_keywords),
             'trending_keywords': trending_keywords,
-            'text_patterns': text_patterns
+            'keyword_clusters': keyword_clusters,
+            'language': language,
+            'analysis_timestamp': datetime.now().isoformat()
         }
         
+        # 감정 분석 결과 추가 (있는 경우)
+        if sentiment_analysis:
+            result['sentiment_analysis'] = sentiment_analysis
+        
+        # 키워드 트렌드 분석
+        if len(all_texts) > 1:
+            try:
+                keyword_trends = analyzer.analyze_keyword_trends_across_videos(all_texts)
+                result['keyword_trends'] = keyword_trends
+            except Exception as e:
+                print(f"키워드 트렌드 분석 오류: {e}")
+        
+        return result
+        
     except ImportError:
-        return {'success': False, 'error': 'data.TextAnalyzer 모듈을 찾을 수 없습니다'}
+        return {
+            'success': False, 
+            'error': 'TextAnalyzer 모듈을 찾을 수 없습니다. data 모듈이 설치되어 있는지 확인하세요.'
+        }
     except Exception as e:
-        return {'success': False, 'error': str(e)}
+        return {'success': False, 'error': f'키워드 추출 오류: {str(e)}'}
 
 def compare_transcript_methods(video_id: str, languages=['ko', 'en'], output_dir="method_comparison"):
     """

@@ -104,7 +104,7 @@ class ResultsViewer:
         )
     
     def create_summary_item(self, parent, label_text, value_text, row, col, colspan=1):
-        """요약 아이템 생성"""
+        """요약 정보 아이템 생성"""
         # 라벨
         label = tk.Label(
             parent,
@@ -126,39 +126,33 @@ class ResultsViewer:
         value_label.grid(row=row, column=col+1, sticky='w', padx=(0, 20), columnspan=colspan-1)
         
         return value_label
-    
+
     def create_video_table(self, parent):
-        """영상 목록 테이블"""
+        """영상 목록 테이블 생성"""
         table_frame = tk.LabelFrame(
             parent,
-            text="🎬 영상 목록",
+            text="📋 영상 목록",
             font=('SF Pro Display', 12, 'bold'),
             bg='#f5f5f7',
             fg='#1d1d1f',
-            padx=10,
-            pady=10
+            padx=15,
+            pady=15
         )
         table_frame.pack(fill='both', expand=True, pady=(0, 15))
         
-        # 테이블 생성
-        self.create_treeview(table_frame)
+        # 필터 영역
+        self.create_filter_area(table_frame)
         
-        # 정렬 및 필터 옵션
-        self.create_table_controls(table_frame)
-    
-    def create_treeview(self, parent):
-        """트리뷰 테이블 생성"""
-        # 테이블 컨테이너
-        table_container = tk.Frame(parent, bg='#f5f5f7')
-        table_container.pack(fill='both', expand=True)
+        # 테이블 영역
+        table_container = tk.Frame(table_frame, bg='#f5f5f7')
+        table_container.pack(fill='both', expand=True, pady=(10, 0))
         
-        # 컬럼 정의
+        # Treeview 생성
         columns = (
             'rank', 'title', 'channel', 'views', 'outlier_score', 
             'engagement', 'video_type', 'duration', 'upload_date'
         )
         
-        # 트리뷰 생성
         self.tree = ttk.Treeview(
             table_container,
             columns=columns,
@@ -167,21 +161,34 @@ class ResultsViewer:
         )
         
         # 컬럼 헤더 설정
-        column_configs = {
-            'rank': ('순위', 50, 'center'),
-            'title': ('제목', 300, 'w'),
-            'channel': ('채널', 150, 'w'),
-            'views': ('조회수', 100, 'e'),
-            'outlier_score': ('Outlier', 80, 'center'),
-            'engagement': ('참여도', 80, 'center'),
-            'video_type': ('유형', 60, 'center'),
-            'duration': ('길이', 80, 'center'),
-            'upload_date': ('업로드', 100, 'center')
+        headers = {
+            'rank': '순위',
+            'title': '영상 제목',
+            'channel': '채널명',
+            'views': '조회수',
+            'outlier_score': 'Outlier Score',
+            'engagement': '참여도',
+            'video_type': '유형',
+            'duration': '길이',
+            'upload_date': '업로드'
         }
         
-        for col, (text, width, anchor) in column_configs.items():
-            self.tree.heading(col, text=text, command=lambda c=col: self.sort_by_column(c))
-            self.tree.column(col, width=width, anchor=anchor)
+        # 컬럼 너비 설정
+        widths = {
+            'rank': 60,
+            'title': 300,
+            'channel': 150,
+            'views': 100,
+            'outlier_score': 120,
+            'engagement': 80,
+            'video_type': 80,
+            'duration': 80,
+            'upload_date': 100
+        }
+        
+        for col in columns:
+            self.tree.heading(col, text=headers[col], command=lambda c=col: self.sort_by_column(c))
+            self.tree.column(col, width=widths[col], minwidth=50)
         
         # 스크롤바
         v_scrollbar = ttk.Scrollbar(table_container, orient='vertical', command=self.tree.yview)
@@ -189,7 +196,7 @@ class ResultsViewer:
         
         self.tree.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
         
-        # 레이아웃
+        # 배치
         self.tree.grid(row=0, column=0, sticky='nsew')
         v_scrollbar.grid(row=0, column=1, sticky='ns')
         h_scrollbar.grid(row=1, column=0, sticky='ew')
@@ -197,342 +204,348 @@ class ResultsViewer:
         table_container.grid_rowconfigure(0, weight=1)
         table_container.grid_columnconfigure(0, weight=1)
         
-        # 더블클릭 이벤트
+        # 이벤트 바인딩
         self.tree.bind('<Double-1>', self.on_video_double_click)
-        
-        # 우클릭 컨텍스트 메뉴
-        self.tree.bind('<Button-3>', self.show_context_menu)
+        self.tree.bind('<Button-3>', self.show_context_menu)  # 우클릭
         
         # 컨텍스트 메뉴 생성
-        self.context_menu = tk.Menu(self.tree, tearoff=0)
-        self.context_menu.add_command(label="🔗 YouTube에서 열기", command=self.open_in_youtube)
-        self.context_menu.add_command(label="📋 링크 복사", command=self.copy_video_link)
-        self.context_menu.add_separator()
-        self.context_menu.add_command(label="📊 상세 정보", command=self.show_video_details)
-    
-    def create_table_controls(self, parent):
-        """테이블 컨트롤"""
-        controls_frame = tk.Frame(parent, bg='#f5f5f7')
-        controls_frame.pack(fill='x', pady=(10, 0))
+        self.create_context_menu()
+
+    def create_filter_area(self, parent):
+        """필터 영역 생성"""
+        filter_frame = tk.Frame(parent, bg='#f5f5f7')
+        filter_frame.pack(fill='x', pady=(0, 10))
         
-        # 필터 옵션
-        filter_frame = tk.Frame(controls_frame, bg='#f5f5f7')
-        filter_frame.pack(side='left')
-        
+        # 필터 라벨
         tk.Label(
             filter_frame,
-            text="필터:",
+            text="🔍 필터:",
+            font=('SF Pro Display', 11, 'bold'),
+            bg='#f5f5f7',
+            fg='#1d1d1f'
+        ).pack(side='left', padx=(0, 10))
+        
+        # Outlier Score 필터
+        tk.Label(
+            filter_frame,
+            text="Outlier Score >=",
             font=('SF Pro Display', 10),
             bg='#f5f5f7'
         ).pack(side='left', padx=(0, 5))
         
-        # 영상 유형 필터
-        self.filter_type_var = tk.StringVar(value="전체")
-        type_filter = ttk.Combobox(
-            filter_frame,
-            textvariable=self.filter_type_var,
-            values=["전체", "쇼츠", "롱폼"],
-            state="readonly",
-            width=8
-        )
-        type_filter.pack(side='left', padx=(0, 10))
-        type_filter.bind('<<ComboboxSelected>>', self.apply_filters)
-        
-        # Outlier Score 필터
-        tk.Label(
-            filter_frame,
-            text="Outlier Score:",
-            font=('SF Pro Display', 10),
-            bg='#f5f5f7'
-        ).pack(side='left', padx=(10, 5))
-        
-        self.filter_outlier_var = tk.StringVar(value="전체")
+        self.outlier_filter_var = tk.StringVar(value="0.0")
         outlier_filter = ttk.Combobox(
             filter_frame,
-            textvariable=self.filter_outlier_var,
-            values=["전체", "3.0x 이상", "1.5x 이상", "1.0x 이상"],
-            state="readonly",
-            width=10
+            textvariable=self.outlier_filter_var,
+            values=["0.0", "1.0", "1.5", "2.0", "3.0", "5.0"],
+            width=8,
+            state="readonly"
         )
-        outlier_filter.pack(side='left', padx=(0, 10))
+        outlier_filter.pack(side='left', padx=(0, 20))
         outlier_filter.bind('<<ComboboxSelected>>', self.apply_filters)
         
-        # 정보 표시
-        info_frame = tk.Frame(controls_frame, bg='#f5f5f7')
-        info_frame.pack(side='right')
-        
-        self.info_label = tk.Label(
-            info_frame,
-            text="표시: 0/0개",
+        # 영상 유형 필터
+        tk.Label(
+            filter_frame,
+            text="유형:",
             font=('SF Pro Display', 10),
-            bg='#f5f5f7',
-            fg='#86868b'
+            bg='#f5f5f7'
+        ).pack(side='left', padx=(0, 5))
+        
+        self.type_filter_var = tk.StringVar(value="전체")
+        type_filter = ttk.Combobox(
+            filter_frame,
+            textvariable=self.type_filter_var,
+            values=["전체", "쇼츠", "롱폼"],
+            width=10,
+            state="readonly"
         )
-        self.info_label.pack(side='right')
-    
+        type_filter.pack(side='left', padx=(0, 20))
+        type_filter.bind('<<ComboboxSelected>>', self.apply_filters)
+        
+        # 정렬 옵션
+        tk.Label(
+            filter_frame,
+            text="정렬:",
+            font=('SF Pro Display', 10),
+            bg='#f5f5f7'
+        ).pack(side='left', padx=(0, 5))
+        
+        self.sort_filter_var = tk.StringVar(value="순위")
+        sort_filter = ttk.Combobox(
+            filter_frame,
+            textvariable=self.sort_filter_var,
+            values=["순위", "조회수", "Outlier Score", "참여도", "업로드일"],
+            width=12,
+            state="readonly"
+        )
+        sort_filter.pack(side='left')
+        sort_filter.bind('<<ComboboxSelected>>', self.apply_filters)
+
+    def create_context_menu(self):
+        """컨텍스트 메뉴 생성"""
+        self.context_menu = tk.Menu(self.parent, tearoff=0)
+        
+        self.context_menu.add_command(
+            label="🎬 YouTube에서 열기",
+            command=self.open_in_youtube
+        )
+        self.context_menu.add_separator()
+        self.context_menu.add_command(
+            label="📋 제목 복사",
+            command=self.copy_title
+        )
+        self.context_menu.add_command(
+            label="🔗 URL 복사",
+            command=self.copy_url
+        )
+        self.context_menu.add_separator()
+        self.context_menu.add_command(
+            label="📊 상세 정보",
+            command=self.show_video_details
+        )
+
     def create_action_buttons(self, parent):
-        """액션 버튼들"""
-        button_frame = tk.Frame(parent, bg='#f5f5f7')
-        button_frame.pack(fill='x')
+        """액션 버튼 영역 생성"""
+        action_frame = tk.Frame(parent, bg='#f5f5f7')
+        action_frame.pack(fill='x')
         
-        # 선택 영상 액션
-        selection_frame = tk.Frame(button_frame, bg='#f5f5f7')
-        selection_frame.pack(side='left')
+        # 왼쪽 버튼들
+        left_buttons = tk.Frame(action_frame, bg='#f5f5f7')
+        left_buttons.pack(side='left')
         
-        tk.Button(
-            selection_frame,
-            text="🔗 선택 영상 열기",
-            font=('SF Pro Display', 11),
-            bg='#007aff',
-            fg='white',
-            borderwidth=0,
-            cursor='hand2',
-            command=self.open_selected_videos
-        ).pack(side='left', padx=(0, 10))
-        
-        tk.Button(
-            selection_frame,
-            text="📊 선택 영상 상세보기",
-            font=('SF Pro Display', 11),
-            bg='#34c759',
-            fg='white',
-            borderwidth=0,
-            cursor='hand2',
-            command=self.show_selected_details
-        ).pack(side='left', padx=(0, 10))
-        
-        # 전체 액션
-        export_frame = tk.Frame(button_frame, bg='#f5f5f7')
-        export_frame.pack(side='right')
-        
-        tk.Button(
-            export_frame,
-            text="📋 통계 보기",
-            font=('SF Pro Display', 11),
-            bg='#ff9500',
-            fg='white',
-            borderwidth=0,
-            cursor='hand2',
-            command=self.show_statistics
-        ).pack(side='left', padx=(0, 10))
-        
-        tk.Button(
-            export_frame,
-            text="🔄 새로고침",
-            font=('SF Pro Display', 11),
+        # 전체 선택/해제
+        self.select_all_button = tk.Button(
+            left_buttons,
+            text="☑ 전체 선택",
+            font=('SF Pro Display', 10),
             bg='#86868b',
             fg='white',
             borderwidth=0,
             cursor='hand2',
-            command=self.refresh_view
-        ).pack(side='left')
-    
-    def display_results(self, videos_data, analysis_settings):
-        """검색 결과 표시"""
-        self.current_videos = videos_data
-        self.current_settings = analysis_settings
+            command=self.toggle_select_all
+        )
+        self.select_all_button.pack(side='left', padx=(0, 10))
         
-        # 요약 정보 업데이트
-        self.update_summary()
+        # 선택된 항목 수 표시
+        self.selection_label = tk.Label(
+            left_buttons,
+            text="선택: 0개",
+            font=('SF Pro Display', 10),
+            bg='#f5f5f7',
+            fg='#86868b'
+        )
+        self.selection_label.pack(side='left', padx=(0, 20))
         
-        # 테이블 데이터 업데이트
-        self.update_table()
+        # 오른쪽 액션 버튼들
+        right_buttons = tk.Frame(action_frame, bg='#f5f5f7')
+        right_buttons.pack(side='right')
         
-        print(f"✅ {len(videos_data)}개 영상 결과 표시 완료")
-    
-    def display_channel_analysis(self, channel_data):
-        """채널 분석 결과 표시"""
-        # 채널 분석 결과를 영상 목록 형식으로 변환
-        if 'videos' in channel_data:
-            self.current_videos = channel_data['videos']
+        # 선택 영상 엑셀 내보내기
+        self.export_selected_button = tk.Button(
+            right_buttons,
+            text="📊 선택 항목 내보내기",
+            font=('SF Pro Display', 10),
+            bg='#34c759',
+            fg='white',
+            borderwidth=0,
+            cursor='hand2',
+            command=self.export_selected_videos
+        )
+        self.export_selected_button.pack(side='right', padx=(10, 0))
+        
+        # 선택 영상 썸네일 다운로드
+        self.download_selected_button = tk.Button(
+            right_buttons,
+            text="🖼 선택 썸네일 다운로드",
+            font=('SF Pro Display', 10),
+            bg='#ff9500',
+            fg='white',
+            borderwidth=0,
+            cursor='hand2',
+            command=self.download_selected_thumbnails
+        )
+        self.download_selected_button.pack(side='right', padx=(10, 0))
+        
+        # 새로고침
+        self.refresh_button = tk.Button(
+            right_buttons,
+            text="🔄 새로고침",
+            font=('SF Pro Display', 10),
+            bg='#007aff',
+            fg='white',
+            borderwidth=0,
+            cursor='hand2',
+            command=self.refresh_table
+        )
+        self.refresh_button.pack(side='right')
+
+    def display_results(self, videos_data, analysis_settings=None):
+        """결과 표시"""
+        try:
+            print(f"📊 결과 표시: {len(videos_data)}개 영상")
             
-            # 분석 설정 구성
-            self.current_settings = {
-                'mode': 'channel_analysis',
-                'mode_name': f"채널 분석: {channel_data.get('channel_info', {}).get('snippet', {}).get('title', 'Unknown')}",
-                'total_found': len(channel_data['videos']),
-                'search_timestamp': datetime.now().isoformat()
-            }
+            # 데이터 저장
+            self.current_videos = videos_data
+            self.current_settings = analysis_settings or {}
             
-            # 표시 업데이트
-            self.update_summary()
+            # 요약 정보 업데이트
+            self.update_summary_info()
+            
+            # 테이블 업데이트
             self.update_table()
             
-            print(f"✅ 채널 분석 결과 표시 완료: {len(self.current_videos)}개 영상")
-    
-    def update_summary(self):
+            print("✅ 결과 표시 완료")
+            
+        except Exception as e:
+            print(f"❌ 결과 표시 오류: {e}")
+            messagebox.showerror("표시 오류", f"결과를 표시하는 중 오류가 발생했습니다:\n{str(e)}")
+
+    def update_summary_info(self):
         """요약 정보 업데이트"""
-        if not self.current_videos:
-            return
-        
-        # 기본 통계 계산
-        total_videos = len(self.current_videos)
-        total_views = sum(int(v['statistics'].get('viewCount', 0)) for v in self.current_videos)
-        avg_views = total_views // total_videos if total_videos > 0 else 0
-        
-        # 참여도 통계
-        engagement_scores = [v.get('analysis', {}).get('engagement_score', 0) for v in self.current_videos]
-        avg_engagement = sum(engagement_scores) / len(engagement_scores) if engagement_scores else 0
-        
-        # 바이럴 영상 수 (Outlier Score 3.0 이상)
-        viral_count = sum(1 for v in self.current_videos 
-                         if v.get('analysis', {}).get('outlier_score', 0) >= 3.0)
-        
-        # 최고 성과 영상
-        top_performer = max(self.current_videos, 
-                           key=lambda x: x.get('analysis', {}).get('outlier_score', 0))
-        top_title = top_performer['snippet']['title'][:30] + "..." if len(top_performer['snippet']['title']) > 30 else top_performer['snippet']['title']
-        
-        # 분석 일시
-        timestamp = self.current_settings.get('search_timestamp', '')
-        if timestamp:
-            dt = datetime.fromisoformat(timestamp.replace('Z', ''))
-            formatted_time = dt.strftime('%Y-%m-%d %H:%M')
-        else:
-            formatted_time = "알 수 없음"
-        
-        # UI 업데이트
-        self.summary_labels['mode'].config(text=self.current_settings.get('mode_name', '알 수 없음'))
-        self.summary_labels['total'].config(text=f"{total_videos:,}개")
-        self.summary_labels['timestamp'].config(text=formatted_time)
-        self.summary_labels['avg_views'].config(text=self.format_number(avg_views))
-        self.summary_labels['avg_engagement'].config(text=f"{avg_engagement:.1f}")
-        self.summary_labels['viral_count'].config(text=f"{viral_count}개")
-        self.summary_labels['top_performer'].config(text=top_title)
-    
+        try:
+            if not self.current_videos:
+                return
+            
+            settings = self.current_settings
+            
+            # 분석 모드
+            mode_name = settings.get('mode_name', '알 수 없음')
+            self.summary_labels['mode'].config(text=mode_name)
+            
+            # 총 영상 수
+            total_count = len(self.current_videos)
+            self.summary_labels['total'].config(text=f"{total_count:,}개")
+            
+            # 분석 일시
+            timestamp = settings.get('search_timestamp', '')
+            if timestamp:
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                    formatted_time = dt.strftime('%Y-%m-%d %H:%M')
+                    self.summary_labels['timestamp'].config(text=formatted_time)
+                except:
+                    self.summary_labels['timestamp'].config(text="알 수 없음")
+            
+            # 평균 조회수 계산
+            total_views = sum(int(v['statistics'].get('viewCount', 0)) for v in self.current_videos)
+            avg_views = total_views / total_count if total_count > 0 else 0
+            self.summary_labels['avg_views'].config(text=self.format_number(int(avg_views)))
+            
+            # 고성과 영상 수
+            high_performers = [v for v in self.current_videos 
+                            if v.get('analysis', {}).get('outlier_score', 0) >= 2.0]
+            self.summary_labels['high_performers'].config(text=f"{len(high_performers)}개")
+            
+            # 트렌드 키워드 (상위 5개)
+            all_keywords = []
+            for video in self.current_videos:
+                keywords = video.get('analysis', {}).get('keywords', [])
+                all_keywords.extend(keywords)
+            
+            from collections import Counter
+            keyword_counts = Counter(all_keywords)
+            top_keywords = [kw for kw, _ in keyword_counts.most_common(5)]
+            keywords_text = ', '.join(top_keywords) if top_keywords else "없음"
+            self.summary_labels['keywords'].config(text=keywords_text[:50] + "..." if len(keywords_text) > 50 else keywords_text)
+            
+        except Exception as e:
+            print(f"요약 정보 업데이트 오류: {e}")
+
     def update_table(self):
         """테이블 업데이트"""
-        # 기존 데이터 클리어
-        for item in self.tree.get_children():
-            self.tree.delete(item)
-        
-        # 필터 적용된 데이터 가져오기
-        filtered_videos = self.get_filtered_videos()
-        
-        # 데이터 삽입
-        for video in filtered_videos:
-            analysis = video.get('analysis', {})
+        try:
+            # 기존 데이터 삭제
+            for item in self.tree.get_children():
+                self.tree.delete(item)
+            
+            if not self.current_videos:
+                return
+            
+            # 필터 적용
+            filtered_videos = self.apply_current_filters()
+            
+            # 데이터 삽입
+            for video in filtered_videos:
+                self.insert_video_row(video)
+            
+            # 선택 정보 업데이트
+            self.update_selection_info()
+            
+        except Exception as e:
+            print(f"테이블 업데이트 오류: {e}")
+
+    def insert_video_row(self, video):
+        """영상 행 삽입"""
+        try:
             snippet = video['snippet']
-            stats = video['statistics']
+            statistics = video['statistics']
+            analysis = video.get('analysis', {})
             
-            # 업로드 날짜 포맷팅
-            upload_date = snippet.get('publishedAt', '')
-            if upload_date:
-                dt = datetime.fromisoformat(upload_date.replace('Z', ''))
-                formatted_date = dt.strftime('%m-%d')
+            # 데이터 준비
+            rank = analysis.get('rank', 0)
+            title = snippet.get('title', '')[:50] + "..." if len(snippet.get('title', '')) > 50 else snippet.get('title', '')
+            channel = snippet.get('channelTitle', '')[:20] + "..." if len(snippet.get('channelTitle', '')) > 20 else snippet.get('channelTitle', '')
+            views = self.format_number(int(statistics.get('viewCount', 0)))
+            outlier_score = f"{analysis.get('outlier_score', 0):.2f}"
+            engagement = f"{analysis.get('engagement_score', 0):.1f}%"
+            video_type = analysis.get('video_type', '알수없음')
+            duration = analysis.get('formatted_duration', '00:00')
+            
+            # 업로드 날짜 포맷
+            published_at = snippet.get('publishedAt', '')
+            if published_at:
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
+                    upload_date = dt.strftime('%m-%d')
+                except:
+                    upload_date = published_at[:10]
             else:
-                formatted_date = "알수없음"
-            
-            # 테이블 행 데이터
-            values = (
-                analysis.get('rank', 0),
-                snippet.get('title', '')[:50] + ("..." if len(snippet.get('title', '')) > 50 else ""),
-                snippet.get('channelTitle', '')[:20] + ("..." if len(snippet.get('channelTitle', '')) > 20 else ""),
-                self.format_number(int(stats.get('viewCount', 0))),
-                f"{analysis.get('outlier_score', 1.0):.1f}x",
-                f"{analysis.get('engagement_score', 0):.1f}",
-                analysis.get('video_type', '알수없음'),
-                analysis.get('formatted_duration', '00:00'),
-                formatted_date
-            )
+                upload_date = ''
             
             # 행 삽입
-            item = self.tree.insert('', 'end', values=values)
+            values = (rank, title, channel, views, outlier_score, engagement, video_type, duration, upload_date)
+            item_id = self.tree.insert('', 'end', values=values)
             
-            # Outlier Score에 따른 행 색상
-            outlier_score = analysis.get('outlier_score', 1.0)
-            if outlier_score >= 5.0:
-                self.tree.set(item, 'outlier_score', f"🔥 {outlier_score:.1f}x")
-            elif outlier_score >= 3.0:
-                self.tree.set(item, 'outlier_score', f"⭐ {outlier_score:.1f}x")
-            elif outlier_score >= 1.5:
-                self.tree.set(item, 'outlier_score', f"📈 {outlier_score:.1f}x")
-            elif outlier_score < 0.7:
-                self.tree.set(item, 'outlier_score', f"📉 {outlier_score:.1f}x")
-        
-        # 정보 업데이트
-        self.info_label.config(text=f"표시: {len(filtered_videos):,}/{len(self.current_videos):,}개")
-    
-    def get_filtered_videos(self):
-        """필터가 적용된 영상 목록 반환"""
-        if not self.current_videos:
-            return []
-        
+            # 성과에 따른 색상 적용
+            outlier_score_float = analysis.get('outlier_score', 0)
+            if outlier_score_float >= 5.0:
+                self.tree.set(item_id, 'outlier_score', f"🔥 {outlier_score}")
+            elif outlier_score_float >= 3.0:
+                self.tree.set(item_id, 'outlier_score', f"⭐ {outlier_score}")
+            elif outlier_score_float >= 1.5:
+                self.tree.set(item_id, 'outlier_score', f"📈 {outlier_score}")
+            
+            # 영상 ID를 태그로 저장 (나중에 참조용)
+            self.tree.set(item_id, '#1', video['id'])
+            
+        except Exception as e:
+            print(f"영상 행 삽입 오류: {e}")
+
+    def apply_current_filters(self):
+        """현재 필터 적용"""
         filtered = self.current_videos.copy()
         
-        # 영상 유형 필터
-        type_filter = self.filter_type_var.get()
-        if type_filter != "전체":
-            type_map = {"쇼츠": "쇼츠", "롱폼": "롱폼"}
-            filtered = [v for v in filtered 
-                       if v.get('analysis', {}).get('video_type') == type_map[type_filter]]
-        
         # Outlier Score 필터
-        outlier_filter = self.filter_outlier_var.get()
-        if outlier_filter != "전체":
-            threshold_map = {"3.0x 이상": 3.0, "1.5x 이상": 1.5, "1.0x 이상": 1.0}
-            threshold = threshold_map[outlier_filter]
+        try:
+            min_outlier = float(self.outlier_filter_var.get())
             filtered = [v for v in filtered 
-                       if v.get('analysis', {}).get('outlier_score', 0) >= threshold]
+                    if v.get('analysis', {}).get('outlier_score', 0) >= min_outlier]
+        except:
+            pass
+        
+        # 영상 유형 필터
+        type_filter = self.type_filter_var.get()
+        if type_filter != "전체":
+            filter_map = {"쇼츠": "shorts", "롱폼": "long_form"}
+            target_type = filter_map.get(type_filter, type_filter)
+            filtered = [v for v in filtered 
+                    if v.get('analysis', {}).get('video_type', '') == target_type]
         
         return filtered
-    
-    def sort_by_column(self, column):
-        """컬럼별 정렬"""
-        # 현재 정렬 상태 확인
-        current_sort = getattr(self, '_current_sort', None)
-        reverse = current_sort == column
-        
-        # 정렬 키 함수 정의
-        def sort_key(video):
-            analysis = video.get('analysis', {})
-            snippet = video['snippet']
-            stats = video['statistics']
-            
-            if column == 'rank':
-                return analysis.get('rank', 999)
-            elif column == 'title':
-                return snippet.get('title', '').lower()
-            elif column == 'channel':
-                return snippet.get('channelTitle', '').lower()
-            elif column == 'views':
-                return int(stats.get('viewCount', 0))
-            elif column == 'outlier_score':
-                return analysis.get('outlier_score', 0)
-            elif column == 'engagement':
-                return analysis.get('engagement_score', 0)
-            elif column == 'video_type':
-                return analysis.get('video_type', '')
-            elif column == 'duration':
-                return analysis.get('duration_seconds', 0)
-            elif column == 'upload_date':
-                return snippet.get('publishedAt', '')
-            else:
-                return 0
-        
-        # 정렬 실행
-        try:
-            self.current_videos.sort(key=sort_key, reverse=reverse)
-            self._current_sort = None if reverse else column
-            self.update_table()
-        except Exception as e:
-            print(f"정렬 오류: {e}")
-    
-    def apply_filters(self, event=None):
-        """필터 적용"""
-        self.update_table()
-    
-    def on_video_double_click(self, event):
-        """영상 더블클릭 이벤트"""
-        self.open_in_youtube()
-    
-    def show_context_menu(self, event):
-        """컨텍스트 메뉴 표시"""
-        # 선택된 아이템 확인
-        item = self.tree.selection()
-        if item:
-            self.context_menu.post(event.x_root, event.y_root)
-    
+
     def open_in_youtube(self):
         """YouTube에서 열기"""
         selected = self.tree.selection()
@@ -541,324 +554,81 @@ class ResultsViewer:
             return
         
         try:
-            # 선택된 영상의 인덱스 찾기
-            item_values = self.tree.item(selected[0])['values']
-            rank = int(item_values[0])
+            # 선택된 영상의 ID 가져오기
+            item = selected[0]
+            video_id = None
             
-            # 해당 영상 찾기
-            video = next((v for v in self.current_videos 
-                         if v.get('analysis', {}).get('rank') == rank), None)
+            # 현재 선택된 영상 찾기
+            values = self.tree.item(item)['values']
+            rank = values[0]
             
-            if video:
-                video_url = f"https://www.youtube.com/watch?v={video['id']}"
-                webbrowser.open(video_url)
+            for video in self.current_videos:
+                if video.get('analysis', {}).get('rank') == rank:
+                    video_id = video['id']
+                    break
             
+            if video_id:
+                url = f"https://www.youtube.com/watch?v={video_id}"
+                webbrowser.open(url)
+                self.main_window.update_status(f"YouTube에서 영상 열기: {video_id}")
+            else:
+                messagebox.showerror("오류", "영상 ID를 찾을 수 없습니다.")
+                
         except Exception as e:
-            self.main_window.show_error("링크 열기 실패", str(e))
-    
-    def copy_video_link(self):
-        """영상 링크 복사"""
+            messagebox.showerror("오류", f"YouTube 열기 실패:\n{str(e)}")
+
+    def copy_title(self):
+        """제목 복사"""
         selected = self.tree.selection()
         if not selected:
-            messagebox.showwarning("선택 필요", "영상을 선택해주세요.")
             return
         
         try:
-            # 선택된 영상의 링크 클립보드에 복사
-            item_values = self.tree.item(selected[0])['values']
-            rank = int(item_values[0])
+            item = selected[0]
+            values = self.tree.item(item)['values']
+            title = values[1]  # 제목 컬럼
             
-            video = next((v for v in self.current_videos 
-                         if v.get('analysis', {}).get('rank') == rank), None)
+            # 클립보드에 복사
+            self.parent.clipboard_clear()
+            self.parent.clipboard_append(title)
             
-            if video:
-                video_url = f"https://www.youtube.com/watch?v={video['id']}"
-                self.main_window.root.clipboard_clear()
-                self.main_window.root.clipboard_append(video_url)
-                self.main_window.update_status("영상 링크가 클립보드에 복사되었습니다.")
+            self.main_window.update_status("제목이 클립보드에 복사되었습니다.")
             
         except Exception as e:
-            self.main_window.show_error("링크 복사 실패", str(e))
-    
-    def show_video_details(self):
-        """영상 상세 정보 표시"""
+            print(f"제목 복사 오류: {e}")
+
+    def copy_url(self):
+        """URL 복사"""
         selected = self.tree.selection()
         if not selected:
-            messagebox.showwarning("선택 필요", "영상을 선택해주세요.")
             return
         
         try:
-            item_values = self.tree.item(selected[0])['values']
-            rank = int(item_values[0])
+            item = selected[0]
+            values = self.tree.item(item)['values']
+            rank = values[0]
             
-            video = next((v for v in self.current_videos 
-                         if v.get('analysis', {}).get('rank') == rank), None)
+            # 영상 ID 찾기
+            video_id = None
+            for video in self.current_videos:
+                if video.get('analysis', {}).get('rank') == rank:
+                    video_id = video['id']
+                    break
             
-            if video:
-                self.show_video_details_dialog(video)
+            if video_id:
+                url = f"https://www.youtube.com/watch?v={video_id}"
+                self.parent.clipboard_clear()
+                self.parent.clipboard_append(url)
+                self.main_window.update_status("URL이 클립보드에 복사되었습니다.")
             
         except Exception as e:
-            self.main_window.show_error("상세 정보 표시 실패", str(e))
-    
-    def show_video_details_dialog(self, video):
-        """영상 상세 정보 다이얼로그"""
-        # 상세 정보 창 생성
-        detail_window = tk.Toplevel(self.main_window.root)
-        detail_window.title("영상 상세 정보")
-        detail_window.geometry("500x600")
-        detail_window.configure(bg='#f5f5f7')
-        
-        # 스크롤 가능한 프레임
-        canvas = tk.Canvas(detail_window, bg='#f5f5f7')
-        scrollbar = ttk.Scrollbar(detail_window, orient="vertical", command=canvas.yview)
-        scrollable_frame = tk.Frame(canvas, bg='#f5f5f7')
-        
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.bind('<Configure>', lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        
-        # 영상 정보 표시
-        snippet = video['snippet']
-        stats = video['statistics']
-        analysis = video.get('analysis', {})
-        
-        details = [
-            ("제목", snippet.get('title', '')),
-            ("채널", snippet.get('channelTitle', '')),
-            ("업로드 일시", snippet.get('publishedAt', '')),
-            ("조회수", self.format_number(int(stats.get('viewCount', 0)))),
-            ("좋아요", self.format_number(int(stats.get('likeCount', 0)))),
-            ("댓글수", self.format_number(int(stats.get('commentCount', 0)))),
-            ("영상 길이", analysis.get('formatted_duration', '00:00')),
-            ("영상 유형", analysis.get('video_type', '알수없음')),
-            ("Outlier Score", f"{analysis.get('outlier_score', 1.0):.2f}x"),
-            ("참여도 점수", f"{analysis.get('engagement_score', 0):.2f}"),
-            ("좋아요율", f"{analysis.get('like_rate', 0):.4f}%"),
-            ("댓글율", f"{analysis.get('comment_rate', 0):.4f}%"),
-            ("일평균 조회수", self.format_number(analysis.get('views_per_day', 0))),
-            ("핵심 키워드", ', '.join(analysis.get('keywords', []))),
-        ]
-        
-        for i, (label, value) in enumerate(details):
-            tk.Label(
-                scrollable_frame,
-                text=f"{label}:",
-                font=('SF Pro Display', 11, 'bold'),
-                bg='#f5f5f7',
-                anchor='w'
-            ).grid(row=i, column=0, sticky='w', padx=10, pady=5)
-            
-            value_label = tk.Label(
-                scrollable_frame,
-                text=str(value),
-                font=('SF Pro Display', 11),
-                bg='#f5f5f7',
-                anchor='w',
-                wraplength=300
-            )
-            value_label.grid(row=i, column=1, sticky='w', padx=10, pady=5)
-        
-        # 레이아웃
-        canvas.pack(side="left", fill="both", expand=True, padx=10, pady=10)
-        scrollbar.pack(side="right", fill="y")
-    
-    def open_selected_videos(self):
-        """선택된 영상들 열기"""
-        selected = self.tree.selection()
-        if not selected:
-            messagebox.showwarning("선택 필요", "영상을 선택해주세요.")
-            return
-        
-        # 최대 5개까지만 열기
-        if len(selected) > 5:
-            result = messagebox.askyesno(
-                "많은 영상 선택",
-                f"{len(selected)}개 영상이 선택되었습니다.\n"
-                f"최대 5개까지만 열 수 있습니다.\n"
-                f"처음 5개만 여시겠습니까?"
-            )
-            if not result:
-                return
-            selected = selected[:5]
-        
-        # 선택된 영상들 열기
-        for item in selected:
-            try:
-                item_values = self.tree.item(item)['values']
-                rank = int(item_values[0])
-                
-                video = next((v for v in self.current_videos 
-                             if v.get('analysis', {}).get('rank') == rank), None)
-                
-                if video:
-                    video_url = f"https://www.youtube.com/watch?v={video['id']}"
-                    webbrowser.open(video_url)
-                
-            except Exception as e:
-                print(f"영상 열기 오류: {e}")
-    
-    def show_selected_details(self):
-        """선택된 영상들 상세보기"""
-        selected = self.tree.selection()
-        if not selected:
-            messagebox.showwarning("선택 필요", "영상을 선택해주세요.")
-            return
-        
-        # 선택된 영상 정보를 요약해서 표시
-        selected_videos = []
-        for item in selected:
-            try:
-                item_values = self.tree.item(item)['values']
-                rank = int(item_values[0])
-                
-                video = next((v for v in self.current_videos 
-                             if v.get('analysis', {}).get('rank') == rank), None)
-                
-                if video:
-                    selected_videos.append(video)
-                
-            except Exception as e:
-                print(f"영상 정보 추출 오류: {e}")
-        
-        if selected_videos:
-            self.show_multiple_videos_summary(selected_videos)
-    
-    def show_multiple_videos_summary(self, videos):
-        """여러 영상 요약 정보 표시"""
-        # 요약 창 생성
-        summary_window = tk.Toplevel(self.main_window.root)
-        summary_window.title(f"선택된 영상 요약 ({len(videos)}개)")
-        summary_window.geometry("600x400")
-        summary_window.configure(bg='#f5f5f7')
-        
-        # 요약 정보 계산
-        total_views = sum(int(v['statistics'].get('viewCount', 0)) for v in videos)
-        avg_outlier = sum(v.get('analysis', {}).get('outlier_score', 0) for v in videos) / len(videos)
-        avg_engagement = sum(v.get('analysis', {}).get('engagement_score', 0) for v in videos) / len(videos)
-        
-        # 요약 텍스트 생성
-        summary_text = f"""
-선택된 영상 분석 요약
+            print(f"URL 복사 오류: {e}")
 
-📊 기본 통계:
-• 총 영상 수: {len(videos):,}개
-• 총 조회수: {self.format_number(total_views)}
-• 평균 Outlier Score: {avg_outlier:.2f}x
-• 평균 참여도: {avg_engagement:.2f}
-
-🎬 영상 목록:
-"""
-        
-        for i, video in enumerate(videos[:10], 1):  # 최대 10개만 표시
-            title = video['snippet']['title'][:50]
-            views = self.format_number(int(video['statistics'].get('viewCount', 0)))
-            outlier = video.get('analysis', {}).get('outlier_score', 0)
-            summary_text += f"{i}. {title} | {views} 조회수 | {outlier:.1f}x\n"
-        
-        if len(videos) > 10:
-            summary_text += f"... 외 {len(videos) - 10}개 영상\n"
-        
-        # 텍스트 위젯
-        text_widget = tk.Text(
-            summary_window,
-            font=('SF Pro Display', 11),
-            bg='white',
-            wrap='word',
-            padx=20,
-            pady=20
-        )
-        text_widget.pack(fill='both', expand=True, padx=20, pady=20)
-        text_widget.insert('1.0', summary_text)
-        text_widget.config(state='disabled')
-    
-    def show_statistics(self):
-        """전체 통계 보기"""
-        if not self.current_videos:
-            messagebox.showwarning("데이터 없음", "표시할 통계가 없습니다.")
-            return
-        
-        # 통계 계산
-        from data import StatisticsCalculator
-        
-        calc = StatisticsCalculator()
-        
-        # 조회수 통계
-        view_counts = [int(v['statistics'].get('viewCount', 0)) for v in self.current_videos]
-        view_stats = calc.calculate_descriptive_stats(view_counts)
-        
-        # 참여도 통계
-        engagement_scores = [v.get('analysis', {}).get('engagement_score', 0) for v in self.current_videos]
-        engagement_stats = calc.calculate_descriptive_stats(engagement_scores)
-        
-        # 통계 창 표시
-        self.show_statistics_dialog(view_stats, engagement_stats)
-    
-    def show_statistics_dialog(self, view_stats, engagement_stats):
-        """통계 다이얼로그 표시"""
-        stats_window = tk.Toplevel(self.main_window.root)
-        stats_window.title("상세 통계")
-        stats_window.geometry("500x400")
-        stats_window.configure(bg='#f5f5f7')
-        
-        # 통계 텍스트 생성
-        stats_text = f"""
-📊 상세 통계 분석
-
-🔍 조회수 통계:
-• 평균: {self.format_number(view_stats['mean'])}
-• 중간값: {self.format_number(view_stats['median'])}
-• 최대: {self.format_number(view_stats['max'])}
-• 최소: {self.format_number(view_stats['min'])}
-• 표준편차: {self.format_number(view_stats['std_dev'])}
-
-⚡ 참여도 통계:
-• 평균: {engagement_stats['mean']:.2f}
-• 중간값: {engagement_stats['median']:.2f}
-• 최대: {engagement_stats['max']:.2f}
-• 최소: {engagement_stats['min']:.2f}
-• 표준편차: {engagement_stats['std_dev']:.2f}
-
-📈 성과 분포:
-• 바이럴 영상 (5.0x+): {sum(1 for v in self.current_videos if v.get('analysis', {}).get('outlier_score', 0) >= 5.0)}개
-• 히트 영상 (3.0x+): {sum(1 for v in self.current_videos if v.get('analysis', {}).get('outlier_score', 0) >= 3.0)}개
-• 양호 영상 (1.5x+): {sum(1 for v in self.current_videos if v.get('analysis', {}).get('outlier_score', 0) >= 1.5)}개
-
-🎬 영상 유형:
-• 쇼츠: {sum(1 for v in self.current_videos if v.get('analysis', {}).get('video_type') == '쇼츠')}개
-• 롱폼: {sum(1 for v in self.current_videos if v.get('analysis', {}).get('video_type') == '롱폼')}개
-        """
-        
-        # 텍스트 위젯
-        text_widget = tk.Text(
-            stats_window,
-            font=('SF Pro Display', 11),
-            bg='white',
-            wrap='word',
-            padx=20,
-            pady=20
-        )
-        text_widget.pack(fill='both', expand=True, padx=20, pady=20)
-        text_widget.insert('1.0', stats_text)
-        text_widget.config(state='disabled')
-    
-    def refresh_view(self):
-        """뷰 새로고침"""
-        if self.current_videos:
-            self.update_summary()
-            self.update_table()
-            self.main_window.update_status("결과 뷰가 새로고침되었습니다.")
-    
     def format_number(self, number):
         """숫자 포맷팅"""
-        if isinstance(number, str):
-            try:
-                number = float(number)
-            except:
-                return str(number)
-        
         if number >= 1000000:
             return f"{number/1000000:.1f}M"
         elif number >= 1000:
             return f"{number/1000:.1f}K"
         else:
-            return f"{number:,.0f}" if number == int(number) else f"{number:.1f}"
+            return f"{number:,}"

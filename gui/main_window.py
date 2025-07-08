@@ -278,7 +278,347 @@ class MainWindow:
         )
         
         if result:
-            self.setup_api_key_dialog()
+            self.show_api_key_setup_dialog()
+        else:
+            # API 키 없이 계속 사용
+            self.update_status("API 키 미설정 - 일부 기능 제한됨")
+            self.show_warning(
+                "기능 제한", 
+                "API 키가 설정되지 않아 다음 기능들이 제한됩니다:\n"
+                "• 영상 검색 및 분석\n"
+                "• 채널 분석\n"
+                "• 트렌드 모니터링\n\n"
+                "나중에 '설정' 메뉴에서 API 키를 설정할 수 있습니다."
+            )
+
+    def show_api_key_setup_dialog(self):
+        """API 키 설정 다이얼로그 표시"""
+        # 새 창 생성
+        setup_window = tk.Toplevel(self.root)
+        setup_window.title("YouTube API 키 설정")
+        setup_window.geometry("500x400")
+        setup_window.resizable(False, False)
+        setup_window.transient(self.root)
+        setup_window.grab_set()
+        
+        # 창 아이콘 설정 (있는 경우)
+        try:
+            setup_window.iconbitmap(self.root.iconbitmap())
+        except:
+            pass
+        
+        # 메인 프레임
+        main_frame = tk.Frame(setup_window, bg='#f5f5f7', padx=20, pady=20)
+        main_frame.pack(fill='both', expand=True)
+        
+        # 제목
+        title_label = tk.Label(
+            main_frame,
+            text="🔑 YouTube API 키 설정",
+            font=('SF Pro Display', 16, 'bold'),
+            bg='#f5f5f7',
+            fg='#1d1d1f'
+        )
+        title_label.pack(pady=(0, 20))
+        
+        # 안내 텍스트
+        guide_text = """
+    YouTube Data API v3 키가 필요합니다.
+
+    📍 API 키 발급 방법:
+    1. Google Cloud Console (console.cloud.google.com) 접속
+    2. 새 프로젝트 생성 또는 기존 프로젝트 선택
+    3. YouTube Data API v3 사용 설정
+    4. '사용자 인증 정보' → 'API 키' 생성
+    5. 아래에 API 키를 입력하세요
+
+    ⚠️ API 키는 안전하게 보관하고 공유하지 마세요.
+        """
+        
+        guide_label = tk.Label(
+            main_frame,
+            text=guide_text,
+            font=('SF Pro Display', 10),
+            bg='#f5f5f7',
+            fg='#86868b',
+            justify='left'
+        )
+        guide_label.pack(pady=(0, 20))
+        
+        # API 키 입력 섹션
+        input_frame = tk.Frame(main_frame, bg='#f5f5f7')
+        input_frame.pack(fill='x', pady=(0, 20))
+        
+        # API 키 라벨
+        api_key_label = tk.Label(
+            input_frame,
+            text="API 키:",
+            font=('SF Pro Display', 12, 'bold'),
+            bg='#f5f5f7',
+            fg='#1d1d1f'
+        )
+        api_key_label.pack(anchor='w')
+        
+        # API 키 입력 필드
+        self.api_key_var = tk.StringVar()
+        api_key_entry = tk.Entry(
+            input_frame,
+            textvariable=self.api_key_var,
+            font=('SF Pro Display', 11),
+            width=50,
+            show='*'  # 비밀번호 스타일로 표시
+        )
+        api_key_entry.pack(fill='x', pady=(5, 0))
+        
+        # 표시/숨기기 체크박스
+        self.show_key_var = tk.BooleanVar()
+        show_key_check = tk.Checkbutton(
+            input_frame,
+            text="API 키 표시",
+            variable=self.show_key_var,
+            command=lambda: api_key_entry.config(show='' if self.show_key_var.get() else '*'),
+            font=('SF Pro Display', 10),
+            bg='#f5f5f7',
+            fg='#86868b'
+        )
+        show_key_check.pack(anchor='w', pady=(5, 0))
+        
+        # 저장 방법 선택
+        save_frame = tk.Frame(main_frame, bg='#f5f5f7')
+        save_frame.pack(fill='x', pady=(0, 20))
+        
+        save_label = tk.Label(
+            save_frame,
+            text="저장 방법:",
+            font=('SF Pro Display', 12, 'bold'),
+            bg='#f5f5f7',
+            fg='#1d1d1f'
+        )
+        save_label.pack(anchor='w')
+        
+        self.save_method_var = tk.StringVar(value=".env")
+        
+        env_radio = tk.Radiobutton(
+            save_frame,
+            text=".env 파일에 저장 (권장)",
+            variable=self.save_method_var,
+            value=".env",
+            font=('SF Pro Display', 10),
+            bg='#f5f5f7',
+            fg='#1d1d1f'
+        )
+        env_radio.pack(anchor='w', pady=(5, 0))
+        
+        config_radio = tk.Radiobutton(
+            save_frame,
+            text="config.py 파일에 저장",
+            variable=self.save_method_var,
+            value="config",
+            font=('SF Pro Display', 10),
+            bg='#f5f5f7',
+            fg='#1d1d1f'
+        )
+        config_radio.pack(anchor='w', pady=(2, 0))
+        
+        # 버튼 프레임
+        button_frame = tk.Frame(main_frame, bg='#f5f5f7')
+        button_frame.pack(fill='x')
+        
+        # 취소 버튼
+        cancel_btn = tk.Button(
+            button_frame,
+            text="취소",
+            font=('SF Pro Display', 11),
+            bg='#86868b',
+            fg='white',
+            relief='flat',
+            padx=20,
+            pady=8,
+            command=setup_window.destroy
+        )
+        cancel_btn.pack(side='right', padx=(10, 0))
+        
+        # 저장 버튼
+        save_btn = tk.Button(
+            button_frame,
+            text="저장",
+            font=('SF Pro Display', 11, 'bold'),
+            bg='#007aff',
+            fg='white',
+            relief='flat',
+            padx=20,
+            pady=8,
+            command=lambda: self.save_api_key(setup_window)
+        )
+        save_btn.pack(side='right')
+        
+        # 도움말 버튼
+        help_btn = tk.Button(
+            button_frame,
+            text="도움말",
+            font=('SF Pro Display', 11),
+            bg='#f5f5f7',
+            fg='#007aff',
+            relief='flat',
+            padx=20,
+            pady=8,
+            command=self.show_api_help
+        )
+        help_btn.pack(side='left')
+        
+        # 엔터 키로 저장
+        api_key_entry.bind('<Return>', lambda e: self.save_api_key(setup_window))
+        
+        # 포커스 설정
+        api_key_entry.focus_set()
+        
+        # 창 중앙 배치
+        setup_window.update_idletasks()
+        x = (setup_window.winfo_screenwidth() // 2) - (setup_window.winfo_width() // 2)
+        y = (setup_window.winfo_screenheight() // 2) - (setup_window.winfo_height() // 2)
+        setup_window.geometry(f"+{x}+{y}")
+
+    def save_api_key(self, setup_window):
+        """API 키 저장"""
+        api_key = self.api_key_var.get().strip()
+        
+        if not api_key:
+            messagebox.showerror("오류", "API 키를 입력하세요.")
+            return
+        
+        # API 키 유효성 검사 (기본적인 형식 체크)
+        if len(api_key) < 30:
+            messagebox.showerror("오류", "올바른 API 키 형식이 아닙니다.\n(너무 짧음)")
+            return
+        
+        save_method = self.save_method_var.get()
+        
+        try:
+            if save_method == ".env":
+                self._save_to_env_file(api_key)
+            else:
+                self._save_to_config_file(api_key)
+            
+            # 저장 성공
+            messagebox.showinfo("완료", f"API 키가 {save_method} 파일에 저장되었습니다.")
+            
+            # API 상태 업데이트
+            self.update_api_status("✅ API 키 설정됨", "green")
+            self.update_status("API 키 설정 완료")
+            
+            # 창 닫기
+            setup_window.destroy()
+            
+        except Exception as e:
+            messagebox.showerror("저장 실패", f"API 키 저장 중 오류가 발생했습니다:\n{str(e)}")
+
+    def _save_to_env_file(self, api_key):
+        """API 키를 .env 파일에 저장"""
+        env_content = f"YOUTUBE_API_KEY={api_key}\n"
+        
+        # 기존 .env 파일이 있으면 읽어서 다른 설정 보존
+        if os.path.exists('.env'):
+            with open('.env', 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            
+            # YouTube API 키 라인 제거
+            lines = [line for line in lines if not line.startswith('YOUTUBE_API_KEY=')]
+            
+            # 새 API 키 추가
+            lines.append(env_content)
+            
+            with open('.env', 'w', encoding='utf-8') as f:
+                f.writelines(lines)
+        else:
+            # 새 .env 파일 생성
+            with open('.env', 'w', encoding='utf-8') as f:
+                f.write(env_content)
+
+    def _save_to_config_file(self, api_key):
+        """API 키를 config.py 파일에 저장"""
+        config_content = f'''"""
+    YouTube 트렌드 분석기 설정 파일
+    """
+
+    # YouTube Data API v3 키
+    DEVELOPER_KEY = "{api_key}"
+
+    # 기타 설정
+    MAX_RESULTS = 200
+    API_QUOTA_LIMIT = 10000
+    MAX_WORKERS = 10
+    THUMBNAIL_DOWNLOAD_TIMEOUT = 30
+    REQUEST_TIMEOUT = 30
+    '''
+        
+        with open('config.py', 'w', encoding='utf-8') as f:
+            f.write(config_content)
+
+    def show_api_help(self):
+        """API 키 도움말 표시"""
+        help_text = """
+    🔑 YouTube API 키 발급 가이드
+
+    1. Google Cloud Console 접속
+    → https://console.cloud.google.com
+
+    2. 프로젝트 생성/선택
+    → 상단 프로젝트 선택기에서 새 프로젝트 생성
+
+    3. API 라이브러리에서 YouTube Data API v3 검색
+    → "사용 설정" 클릭
+
+    4. 사용자 인증 정보 생성
+    → 왼쪽 메뉴 "API 및 서비스" → "사용자 인증 정보"
+    → "사용자 인증 정보 만들기" → "API 키" 선택
+
+    5. API 키 복사
+    → 생성된 API 키를 복사하여 여기에 붙여넣기
+
+    💡 참고사항:
+    • API 키는 무료로 발급 가능
+    • 일일 할당량: 10,000 단위 (일반적으로 충분함)
+    • API 키는 타인과 공유하지 마세요
+    • 키가 노출되면 즉시 재생성하세요
+        """
+        
+        messagebox.showinfo("API 키 발급 도움말", help_text)
+
+    def open_settings(self):
+        """설정 창 열기"""
+        try:
+            self.show_api_key_setup_dialog()
+        except Exception as e:
+            self.show_error("설정 오류", f"설정 창을 열 수 없습니다: {str(e)}")
+
+    def clear_cache(self):
+        """캐시 정리"""
+        try:
+            from utils import get_cache_manager
+            
+            cache_manager = get_cache_manager()
+            cache_manager.clear_all()
+            
+            # 임시 파일들도 정리
+            import glob
+            temp_files = []
+            temp_files.extend(glob.glob("*.tmp"))
+            temp_files.extend(glob.glob("temp/*"))
+            temp_files.extend(glob.glob("cache/*"))
+            
+            removed_count = 0
+            for file_path in temp_files:
+                try:
+                    os.remove(file_path)
+                    removed_count += 1
+                except:
+                    pass
+            
+            self.update_status(f"캐시 정리 완료 ({removed_count}개 파일 삭제)")
+            messagebox.showinfo("완료", f"캐시가 정리되었습니다.\n삭제된 파일: {removed_count}개")
+            
+        except Exception as e:
+            self.show_error("캐시 정리 실패", str(e))
     
     def setup_api_key_dialog(self):
         """API 키 설정 다이얼로그"""

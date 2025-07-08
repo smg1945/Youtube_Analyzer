@@ -268,15 +268,119 @@ class MultiStepProgressDialog(ProgressDialog):
             self.overall_progress_var.set(self.current_step)
     
     def complete_all(self, message="모든 작업이 완료되었습니다."):
-        """모든 단계 완료"""
-        self.current_step = len(self.steps)
-        self.update_progress(100, message)
-        
-        if hasattr(self, 'overall_progress_var'):
-            self.overall_progress_var.set(len(self.steps))
+        """모든 작업 완료 처리"""
+        try:
+            # 현재 단계 완료
+            if self.current_step <= len(self.steps):
+                self.complete_step()
             
-        if hasattr(self, 'step_label'):
-            self.step_label.config(text=f"완료: {len(self.steps)}/{len(self.steps)} 단계")
+            # 최종 진행률 100%로 설정
+            self.update_progress(100, message)
+            
+            # 전체 진행률도 최대값으로 설정
+            if hasattr(self, 'overall_progress_var'):
+                self.overall_progress_var.set(len(self.steps))
+            
+            # 단계 라벨 업데이트
+            self.step_label.config(text=f"완료! ({len(self.steps)}/{len(self.steps)})")
+            
+            # 성공 메시지와 함께 완료 표시
+            self.message_label.config(text=message, fg='#34c759')  # 초록색
+            
+            # 취소 버튼을 닫기 버튼으로 변경
+            self.cancel_btn.config(text="닫기")
+            
+            # 완료 효과음 (선택사항)
+            try:
+                import winsound
+                winsound.MessageBeep(winsound.MB_OK)
+            except ImportError:
+                # Windows가 아닌 경우 또는 winsound가 없는 경우 무시
+                pass
+            
+            # 완료 시간 기록
+            self.end_time = time.time()
+            total_time = self.end_time - self.start_time
+            
+            # 시간 정보 표시
+            time_message = f"총 소요시간: {total_time:.1f}초"
+            
+            # 기존 메시지에 시간 정보 추가
+            final_message = f"{message}\n{time_message}"
+            self.message_label.config(text=final_message)
+            
+            print(f"✅ 모든 작업 완료: {message}")
+            print(f"⏱️ {time_message}")
+            
+            # 완료 콜백 호출 (있는 경우)
+            if hasattr(self, 'completion_callback') and self.completion_callback:
+                try:
+                    self.completion_callback(True, final_message)
+                except Exception as e:
+                    print(f"완료 콜백 오류: {e}")
+            
+            # 자동 닫기 옵션 (설정된 경우)
+            if hasattr(self, 'auto_close_delay') and self.auto_close_delay > 0:
+                self.root.after(self.auto_close_delay * 1000, self.close_dialog)
+            
+        except Exception as e:
+            print(f"완료 처리 오류: {e}")
+            # 오류가 발생해도 기본적인 완료 처리는 수행
+            self.update_progress(100, "작업 완료 (일부 오류 발생)")
+            if hasattr(self, 'overall_progress_var'):
+                self.overall_progress_var.set(len(self.steps))
+
+    def set_completion_callback(self, callback):
+        """완료 시 호출할 콜백 함수 설정"""
+        self.completion_callback = callback
+
+    def set_auto_close(self, delay_seconds):
+        """완료 후 자동 닫기 설정 (초 단위)"""
+        self.auto_close_delay = delay_seconds
+
+    def close_dialog(self):
+        """다이얼로그 닫기"""
+        try:
+            if self.root and self.root.winfo_exists():
+                self.root.destroy()
+        except Exception as e:
+            print(f"다이얼로그 닫기 오류: {e}")
+
+    def abort_with_error(self, error_message):
+        """오류로 인한 작업 중단"""
+        try:
+            # 오류 메시지 표시
+            self.message_label.config(text=f"❌ 오류: {error_message}", fg='#ff3b30')  # 빨간색
+            
+            # 진행률 바를 빨간색으로 변경 (가능한 경우)
+            try:
+                style = ttk.Style()
+                style.configure("Error.Horizontal.TProgressbar", background='#ff3b30')
+                self.progress_bar.configure(style="Error.Horizontal.TProgressbar")
+            except:
+                pass
+            
+            # 취소 버튼을 닫기 버튼으로 변경
+            self.cancel_btn.config(text="닫기")
+            
+            # 오류 효과음
+            try:
+                import winsound
+                winsound.MessageBeep(winsound.MB_ICONERROR)
+            except ImportError:
+                pass
+            
+            print(f"❌ 작업 중단: {error_message}")
+            
+            # 오류 콜백 호출 (있는 경우)
+            if hasattr(self, 'completion_callback') and self.completion_callback:
+                try:
+                    self.completion_callback(False, error_message)
+                except Exception as e:
+                    print(f"오류 콜백 호출 실패: {e}")
+                    
+        except Exception as e:
+            print(f"오류 처리 중 오류 발생: {e}")
 
 
 # 편의 함수들

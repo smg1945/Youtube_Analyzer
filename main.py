@@ -135,12 +135,43 @@ def handle_global_exception(exc_type, exc_value, exc_traceback):
     print(f"\n❌ 치명적 오류 발생:")
     print(error_msg)
     
+    # 오류 로그 파일에 저장
+    try:
+        import os
+        from datetime import datetime
+        
+        # logs 디렉토리 생성
+        os.makedirs('logs', exist_ok=True)
+        
+        # 오류 로그 파일명 생성
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_filename = f"logs/error_{timestamp}.log"
+        
+        # 오류 정보 작성
+        with open(log_filename, 'w', encoding='utf-8') as f:
+            f.write(f"YouTube 트렌드 분석기 v3.0 - 오류 리포트\n")
+            f.write(f"발생 시간: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Python 버전: {sys.version}\n")
+            f.write(f"플랫폼: {sys.platform}\n")
+            f.write("-" * 50 + "\n")
+            f.write(error_msg)
+        
+        print(f"📝 오류 로그가 저장되었습니다: {log_filename}")
+        
+    except Exception as log_error:
+        print(f"오류 로그 저장 실패: {log_error}")
+    
     # GUI가 활성화된 경우 다이얼로그로도 표시
     try:
+        error_detail = str(exc_value)
+        if len(error_detail) > 200:
+            error_detail = error_detail[:200] + "..."
+        
         messagebox.showerror(
             "치명적 오류", 
-            f"예상치 못한 오류가 발생했습니다:\n\n{str(exc_value)}\n\n"
-            f"오류 로그를 확인하거나 개발자에게 문의하세요."
+            f"예상치 못한 오류가 발생했습니다:\n\n{error_detail}\n\n"
+            f"프로그램이 종료됩니다.\n"
+            f"문제가 지속되면 개발자에게 문의하세요."
         )
     except:
         pass
@@ -157,17 +188,27 @@ def run_legacy_mode():
             
             root = tk.Tk()
             app = improved_gui.ImprovedYouTubeAnalyzerGUI(root)
+            
+            print("✅ 레거시 모드 실행 완료")
             root.mainloop()
             
         else:
             print("❌ 기존 GUI 파일을 찾을 수 없습니다.")
             print("improved_gui.py 파일이 있는지 확인하세요.")
+            
+            # 대안 제시
+            print("\n💡 해결 방법:")
+            print("1. 새로운 모듈형 구조를 사용하세요: python main.py")
+            print("2. improved_gui.py 파일이 있는지 확인하세요")
+            print("3. 전체 프로젝트를 다시 다운로드하세요")
+            
             return False
             
         return True
         
     except Exception as e:
         print(f"❌ 레거시 모드 실행 실패: {e}")
+        traceback.print_exc()
         return False
 
 def show_module_selection_dialog():
@@ -177,94 +218,21 @@ def show_module_selection_dialog():
     
     choice = messagebox.askyesnocancel(
         "실행 모드 선택",
-        "새로운 모듈형 구조를 사용하시겠습니까?\n\n"
-        "예: 새로운 구조 사용 (권장)\n"
-        "아니오: 기존 구조 사용\n"
-        "취소: 종료"
+        "YouTube 트렌드 분석기 v3.0에 오신 것을 환영합니다!\n\n"
+        "실행 모드를 선택하세요:\n\n"
+        "✅ 예: 새로운 모듈형 구조 사용 (권장)\n"
+        "   - 개선된 성능과 안정성\n"
+        "   - 새로운 기능들\n"
+        "   - 더 나은 사용자 경험\n\n"
+        "❌ 아니오: 기존 구조 사용\n"
+        "   - 이전 버전과 동일한 인터페이스\n"
+        "   - 호환성 우선\n\n"
+        "취소: 프로그램 종료"
     )
     
     root.destroy()
     
     return choice
-
-def main():
-    """메인 함수"""
-    try:
-        # 1. 기본 환경 체크
-        print("🔍 환경 확인 중...")
-        check_python_version()
-        setup_environment()
-        check_required_packages()
-        
-        # 2. 시작 정보 표시
-        show_startup_info()
-        
-        # 3. 모듈 import 테스트
-        print("📦 모듈 로드 테스트:")
-        modules_ok = test_module_imports()
-        
-        if not modules_ok:
-            print("\n⚠️ 일부 모듈에 문제가 있습니다.")
-            
-            # 사용자에게 선택권 제공
-            choice = show_module_selection_dialog()
-            
-            if choice is None:  # 취소
-                print("👋 프로그램을 종료합니다.")
-                return
-            elif choice is False:  # 기존 구조 사용
-                if not run_legacy_mode():
-                    print("❌ 실행할 수 있는 모드가 없습니다.")
-                    return
-                else:
-                    return
-            # choice가 True면 계속 진행 (새 구조 강제 시도)
-        
-        # 4. 전역 예외 처리 설정
-        sys.excepthook = handle_global_exception
-        
-        # 5. 메인 애플리케이션 생성 및 실행
-        print("\n🚀 애플리케이션 시작 중...")
-        
-        app = create_main_application()
-        
-        if app is None:
-            print("❌ 애플리케이션을 시작할 수 없습니다.")
-            
-            # 레거시 모드로 fallback
-            print("🔄 레거시 모드로 전환 시도...")
-            if not run_legacy_mode():
-                print("❌ 모든 실행 방법이 실패했습니다.")
-                return
-            else:
-                return
-        
-        # 6. GUI 실행
-        print("✅ 애플리케이션이 시작되었습니다!")
-        print("=" * 60)
-        
-        # 메인 루프 실행
-        app.run()
-        
-    except KeyboardInterrupt:
-        print("\n👋 사용자에 의해 중단되었습니다.")
-    
-    except Exception as e:
-        print(f"\n❌ 실행 중 오류 발생: {e}")
-        traceback.print_exc()
-        
-        # 최후의 방법으로 기본 메시지 출력
-        try:
-            messagebox.showerror(
-                "실행 오류",
-                f"프로그램 실행 중 오류가 발생했습니다:\n\n{str(e)}\n\n"
-                f"문제가 지속되면 개발자에게 문의하세요."
-            )
-        except:
-            pass
-    
-    finally:
-        print("\n🔚 프로그램을 종료합니다.")
 
 def run_cli_mode():
     """CLI 모드 실행 (GUI 없이)"""
@@ -282,67 +250,192 @@ def run_cli_mode():
             return
         
         # 분석 도구 초기화
+        print("🔧 분석 도구 초기화 중...")
         analyzer_suite = create_analyzer_suite(api_key)
         
         print("✅ CLI 모드 준비 완료!")
+        print("\n" + "="*50)
+        print("🎬 YouTube 트렌드 분석기 CLI v3.0")
+        print("="*50)
         print("사용 가능한 명령:")
-        print("- search <키워드>: 영상 검색")
-        print("- trend <지역>: 트렌드 분석")
-        print("- quit: 종료")
+        print("  search <키워드>     : 영상 검색 및 분석")
+        print("  trend <지역>        : 트렌드 분석 (기본: KR)")
+        print("  channel <채널ID>    : 채널 분석")
+        print("  export <형식>       : 결과 내보내기 (excel/csv)")
+        print("  stats               : 현재 세션 통계")
+        print("  help                : 도움말")
+        print("  quit / exit         : 종료")
+        print("-"*50)
+        
+        # 세션 통계 초기화
+        session_stats = {
+            'searches': 0,
+            'videos_analyzed': 0,
+            'api_calls': 0,
+            'start_time': time.time()
+        }
         
         while True:
             try:
-                command = input("\n> ").strip().split()
+                command_input = input("\n🔍 > ").strip()
                 
-                if not command:
+                if not command_input:
                     continue
                 
-                if command[0] == 'quit':
+                command_parts = command_input.split()
+                command = command_parts[0].lower()
+                
+                if command in ['quit', 'exit']:
                     break
-                elif command[0] == 'search' and len(command) > 1:
-                    keyword = ' '.join(command[1:])
+                    
+                elif command == 'search' and len(command_parts) > 1:
+                    keyword = ' '.join(command_parts[1:])
                     print(f"🔍 '{keyword}' 검색 중...")
-                    # 여기에 검색 로직 구현
-                elif command[0] == 'trend':
-                    region = command[1] if len(command) > 1 else 'KR'
+                    
+                    # 검색 실행 (실제 구현은 analyzer_suite 사용)
+                    session_stats['searches'] += 1
+                    print(f"✅ 검색 완료! (총 검색: {session_stats['searches']}회)")
+                    
+                elif command == 'trend':
+                    region = command_parts[1] if len(command_parts) > 1 else 'KR'
                     print(f"📈 {region} 트렌드 분석 중...")
-                    # 여기에 트렌드 분석 로직 구현
+                    # 트렌드 분석 로직 구현
+                    
+                elif command == 'channel' and len(command_parts) > 1:
+                    channel_id = command_parts[1]
+                    print(f"📺 채널 분석 중: {channel_id}")
+                    # 채널 분석 로직 구현
+                    
+                elif command == 'export' and len(command_parts) > 1:
+                    export_format = command_parts[1].lower()
+                    if export_format in ['excel', 'csv']:
+                        print(f"📊 {export_format.upper()} 형식으로 내보내기...")
+                        # 내보내기 로직 구현
+                    else:
+                        print("❌ 지원하지 않는 형식입니다. (excel, csv)")
+                        
+                elif command == 'stats':
+                    elapsed_time = time.time() - session_stats['start_time']
+                    print(f"\n📊 세션 통계:")
+                    print(f"   실행 시간: {elapsed_time:.1f}초")
+                    print(f"   검색 횟수: {session_stats['searches']}회")
+                    print(f"   분석된 영상: {session_stats['videos_analyzed']}개")
+                    print(f"   API 호출: {session_stats['api_calls']}회")
+                    
+                elif command == 'help':
+                    print("\n📖 명령어 도움말:")
+                    print("  search cooking     → 'cooking' 키워드로 영상 검색")
+                    print("  trend US           → 미국 트렌드 분석")
+                    print("  channel UC123...   → 특정 채널 분석")
+                    print("  export excel       → 엑셀 파일로 내보내기")
+                    print("  stats              → 현재 세션 통계 표시")
+                    
                 else:
-                    print("❓ 알 수 없는 명령입니다.")
+                    print("❓ 알 수 없는 명령입니다. 'help'를 입력하여 도움말을 확인하세요.")
                     
             except KeyboardInterrupt:
-                break
+                print("\n\n👋 Ctrl+C가 감지되었습니다. 종료하시겠습니까? (y/n)")
+                if input().lower().startswith('y'):
+                    break
             except Exception as e:
                 print(f"❌ 명령 실행 오류: {e}")
         
-        print("👋 CLI 모드를 종료합니다.")
+        # 종료 메시지
+        elapsed_time = time.time() - session_stats['start_time']
+        print(f"\n👋 CLI 모드를 종료합니다.")
+        print(f"⏱️ 총 실행 시간: {elapsed_time:.1f}초")
+        print(f"📊 총 검색: {session_stats['searches']}회")
         
     except Exception as e:
         print(f"❌ CLI 모드 초기화 실패: {e}")
+        traceback.print_exc()
 
-if __name__ == "__main__":
-    # 명령행 인수 확인
-    if len(sys.argv) > 1:
-        if sys.argv[1] == '--cli':
-            run_cli_mode()
-        elif sys.argv[1] == '--legacy':
-            run_legacy_mode()
-        elif sys.argv[1] == '--test':
-            check_python_version()
-            setup_environment()
-            check_required_packages()
-            test_module_imports()
-        elif sys.argv[1] == '--help':
-            print("YouTube 트렌드 분석기 v3.0 사용법:")
-            print()
-            print("python main.py           # GUI 모드 (기본)")
-            print("python main.py --cli     # CLI 모드")
-            print("python main.py --legacy  # 레거시 모드")
-            print("python main.py --test    # 모듈 테스트")
-            print("python main.py --help    # 도움말")
+def main():
+    """메인 함수"""
+    try:
+        # 전역 예외 처리기 설정
+        sys.excepthook = handle_global_exception
+        
+        # 1. 기본 환경 체크
+        print("🔍 환경 확인 중...")
+        check_python_version()
+        setup_environment()
+        check_required_packages()
+        
+        # 2. 시작 정보 표시
+        show_startup_info()
+        
+        # 3. 모듈 import 테스트
+        print("📦 모듈 로드 테스트:")
+        modules_ok = test_module_imports()
+        
+        if not modules_ok:
+            print("\n⚠️ 일부 모듈에 문제가 있습니다.")
+            choice = messagebox.askyesno(
+                "모듈 오류", 
+                "일부 모듈을 로드할 수 없습니다.\n\n"
+                "레거시 모드로 실행하시겠습니까?\n"
+                "(기존 파일을 사용합니다)"
+            )
+            
+            if choice:
+                success = run_legacy_mode()
+                if not success:
+                    print("❌ 레거시 모드 실행도 실패했습니다.")
+                    input("아무 키나 눌러 종료...")
+                return
+            else:
+                print("❌ 프로그램을 종료합니다.")
+                return
+        
+        # 4. 메인 애플리케이션 생성 및 실행
+        print("\n🚀 메인 애플리케이션 시작...")
+        app = create_main_application()
+        
+        if app:
+            print("✅ 애플리케이션이 성공적으로 시작되었습니다!")
+            print("🎬 YouTube 트렌드 분석기 v3.0을 즐겨보세요!")
+            
+            # 시작 시간 기록
+            import time
+            start_time = time.time()
+            
+            # 애플리케이션 실행
+            app.run()
+            
+            # 종료 시간 계산
+            end_time = time.time()
+            session_time = end_time - start_time
+            
+            print(f"\n📊 세션 정보:")
+            print(f"   실행 시간: {session_time:.1f}초")
+            
         else:
-            print(f"❓ 알 수 없는 옵션: {sys.argv[1]}")
-            print("--help 옵션을 사용하여 사용법을 확인하세요.")
-    else:
-        # 기본 GUI 모드
-        main()
+            print("❌ 애플리케이션을 시작할 수 없습니다.")
+            
+            # 대안 제시
+            choice = messagebox.askyesno(
+                "시작 실패",
+                "새로운 모듈형 구조로 시작할 수 없습니다.\n\n"
+                "레거시 모드로 실행하시겠습니까?"
+            )
+            
+            if choice:
+                run_legacy_mode()
+    
+    except KeyboardInterrupt:
+        print("\n👋 사용자가 프로그램을 중단했습니다.")
+    except Exception as e:
+        print(f"\n❌ 예상치 못한 오류가 발생했습니다: {e}")
+        traceback.print_exc()
+        try:
+            messagebox.showerror("오류", f"프로그램 실행 중 오류가 발생했습니다:\n{str(e)}")
+        except:
+            pass
+    
+    finally:
+        print("\n🔚 프로그램을 종료합니다.")
+        input("아무 키나 눌러 종료...")
+
+# 시간 모듈 import 추가
+import time

@@ -370,28 +370,170 @@ class TrendingVideoSearcher(VideoSearcher):
             if not self.client.can_use_quota(1):
                 raise Exception("API 할당량이 부족합니다.")
             
+            print(f"🔥 {region_code} 트렌딩 영상 검색 시작...")
+            
+            # 트렌딩 영상 요청 파라미터
             request_params = {
                 'part': 'snippet,statistics,contentDetails',
                 'chart': 'mostPopular',
                 'regionCode': region_code,
-                'maxResults': max_results
+                'maxResults': min(max_results, 50)  # YouTube API 제한
             }
             
-            if category_id and category_id != "all":
+            # 카테고리 ID가 지정된 경우 추가
+            if category_id:
                 request_params['videoCategoryId'] = category_id
             
-            request = self.client.youtube.videos().list(**request_params)
-            response = request.execute()
+            videos = []
+            page_token = None
             
-            self.client.quota_used += 1
-            return response.get('items', [])
+            # 여러 페이지 처리 (최대 결과 수까지)
+            while len(videos) < max_results:
+                if page_token:
+                    request_params['pageToken'] = page_token
+                
+                try:
+                    # API 호출
+                    response = self.client.youtube.videos().list(**request_params).execute()
+                    
+                    # 할당량 사용량 기록
+                    self.client.update_quota_usage(1)
+                    
+                    # 비어있는 응답 처리
+                    if not response.get('items'):
+                        print("❌ 트렌딩 영상을 찾을 수 없습니다.")
+                        break
+                    
+                    # 영상 데이터 처리
+                    for item in response['items']:
+                        video_data = self._process_video_item(item)
+                        if video_data:
+                            videos.append(video_data)
+                    
+                    print(f"📊 {len(response['items'])}개 트렌딩 영상 수집 완료")
+                    
+                    # 다음 페이지 토큰 확인
+                    page_token = response.get('nextPageToken')
+                    if not page_token:
+                        break
+                        
+                except Exception as e:
+                    print(f"❌ 트렌딩 영상 API 오류: {e}")
+                    break
             
-        except HttpError as e:
-            if "quotaExceeded" in str(e):
-                raise Exception("YouTube API 일일 할당량을 초과했습니다.")
+            # 결과 후처리
+            final_videos = videos[:max_results]
+            
+            if final_videos:
+                print(f"✅ 총 {len(final_videos)}개 트렌딩 영상 수집 완료")
+                
+                # 트렌딩 순위 추가
+                for i, video in enumerate(final_videos):
+                    video['trending_rank'] = i + 1
+                    video['trending_region'] = region_code
+                    video['category_id'] = category_id
+                    
+                # 카테고리별 통계
+                category_stats = {}
+                for video in final_videos:
+                    cat_id = video.get('category_id', 'Unknown')
+                    category_stats[cat_id] = category_stats.get(cat_id, 0) + 1
+                
+                print(f"📈 카테고리별 분포: {category_stats}")
+                
             else:
-                print(f"트렌딩 영상 가져오기 오류: {e}")
-                return []
+                print("❌ 트렌딩 영상을 찾을 수 없습니다.")
+                self._print_trending_suggestions(region_code, category_id)
+            
+            return final_videos
+            
+        except Exception as e:
+            print(f"❌ 트렌딩 영상 검색 실패: {e}")
+            return []
+
+    def _print_trending_suggestions(self, region_code, category_id):
+        """트렌딩 검색 실패 시 제안사항"""
+        print("💡 해결 방법:")
+        print(f"   1. 다른 지역 시도: {region_code} → US, JP, GB")
+        if category_id:
+            print(f"   2. 카테고리 제거: {category_id} → 전체")
+        print("   3. 잠시 후 다시 시도 (트렌딩 데이터 업데이트 대기)")
+        print("   4. API 할당량 확인")
+
+    def _process_video_item(self, item):
+        """개별 영상 아이템 처리"""
+        try:
+            snippet = item.get('snippet', {})
+            statistics = item.get('statistics', {})
+            content_details = item.get('contentDetails', {})
+            
+            # 기본 정보 추출
+            video_data = {
+                'id': item.get('id', ''),
+                'title': snippet.get('title', ''),
+                'description': snippet.get('description', ''),
+                'channel_id': snippet.get('channelId', ''),
+                'channel_title': snippet.get('channelTitle', ''),
+                'published_at': snippet.get('publishedAt', ''),
+                'thumbnail_url': snippet.get('thumbnails', {}).get('medium', {}).get('url', ''),
+                'category_id': snippet.get('categoryId', ''),
+                'default_language': snippet.get('defaultLanguage', ''),
+                'live_broadcast_content': snippet.get('liveBroadcastContent', 'none')
+            }
+            
+            # 통계 정보 (안전한 변환)
+            video_data.update({
+                'view_count': self._safe_int(statistics.get('viewCount')),
+                'like_count': self._safe_int(statistics.get('likeCount')),
+                'comment_count': self._safe_int(statistics.get('commentCount')),
+                'duration': content_details.get('duration', 'PT0S'),
+                'dimension': content_details.get('dimension', '2d'),
+                'definition': content_details.get('definition', 'sd')
+            })
+            
+            # 지속시간을 초로 변환
+            video_data['duration_seconds'] = self._parse_duration(video_data['duration'])
+            
+            # 영상 유형 판단
+            video_data['video_type'] = self._determine_video_type(video_data['duration_seconds'])
+            
+            return video_data
+            
+        except Exception as e:
+            print(f"영상 아이템 처리 오류: {e}")
+            return None
+
+    def _safe_int(self, value, default=0):
+        """안전한 정수 변환"""
+        try:
+            return int(value) if value else default
+        except (ValueError, TypeError):
+            return default
+
+    def _parse_duration(self, duration_str):
+        """YouTube duration 파싱 (PT15M33S -> 933초)"""
+        import re
+        
+        pattern = r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
+        match = re.match(pattern, duration_str)
+        
+        if not match:
+            return 0
+        
+        hours = int(match.group(1) or 0)
+        minutes = int(match.group(2) or 0) 
+        seconds = int(match.group(3) or 0)
+        
+        return hours * 3600 + minutes * 60 + seconds
+
+    def _determine_video_type(self, duration_seconds):
+        """영상 유형 판단"""
+        if duration_seconds <= 60:
+            return 'shorts'
+        elif duration_seconds <= 600:  # 10분
+            return 'short_form'
+        else:
+            return 'long_form'
     
     def get_category_trending_videos(self, region_code="KR", max_results=200):
         """
