@@ -593,364 +593,364 @@ class SearchTab:
         self.update_progress(0, "중지됨")
         self.main_window.update_status("검색이 중지되었습니다.")
     
-def export_excel(self):
-    """엑셀 내보내기"""
-    if not self.current_videos:
-        messagebox.showwarning("데이터 없음", "내보낼 데이터가 없습니다.")
-        return
-    
-    try:
-        from exporters import ExcelExporter
-        from tkinter import filedialog
-        from datetime import datetime
-        
-        # 저장 위치 선택
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        default_filename = f"youtube_analysis_{timestamp}.xlsx"
-        
-        file_path = filedialog.asksaveasfilename(
-            title="엑셀 파일 저장",
-            defaultextension=".xlsx",
-            filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
-            initialname=default_filename
-        )
-        
-        if not file_path:
+    def export_excel(self):
+        """엑셀 내보내기"""
+        if not self.current_videos:
+            messagebox.showwarning("데이터 없음", "내보낼 데이터가 없습니다.")
             return
         
-        # 엑셀 내보내기
-        exporter = ExcelExporter()
-        result = exporter.export_analysis_results(
-            self.current_videos,
-            self.analysis_settings,
-            file_path
-        )
-        
-        if result.get('success'):
-            messagebox.showinfo(
-                "내보내기 완료",
-                f"엑셀 파일이 저장되었습니다.\n\n"
-                f"파일: {file_path}\n"
-                f"영상 수: {len(self.current_videos)}개"
+        try:
+            from exporters import ExcelExporter
+            from tkinter import filedialog
+            from datetime import datetime
+            
+            # 저장 위치 선택
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"youtube_analysis_{timestamp}.xlsx"
+            
+            file_path = filedialog.asksaveasfilename(
+                title="엑셀 파일 저장",
+                defaultextension=".xlsx",
+                filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")],
+                initialname=default_filename
             )
-            self.main_window.update_status("엑셀 내보내기 완료")
-        else:
-            raise Exception(result.get('error', '알 수 없는 오류'))
             
-    except Exception as e:
-        messagebox.showerror("내보내기 실패", f"엑셀 내보내기 중 오류가 발생했습니다:\n{str(e)}")
+            if not file_path:
+                return
+            
+            # 엑셀 내보내기
+            exporter = ExcelExporter()
+            result = exporter.export_analysis_results(
+                self.current_videos,
+                self.analysis_settings,
+                file_path
+            )
+            
+            if result.get('success'):
+                messagebox.showinfo(
+                    "내보내기 완료",
+                    f"엑셀 파일이 저장되었습니다.\n\n"
+                    f"파일: {file_path}\n"
+                    f"영상 수: {len(self.current_videos)}개"
+                )
+                self.main_window.update_status("엑셀 내보내기 완료")
+            else:
+                raise Exception(result.get('error', '알 수 없는 오류'))
+                
+        except Exception as e:
+            messagebox.showerror("내보내기 실패", f"엑셀 내보내기 중 오류가 발생했습니다:\n{str(e)}")
 
-def export_thumbnails(self):
-    """썸네일 다운로드"""
-    if not self.current_videos:
-        messagebox.showwarning("데이터 없음", "다운로드할 데이터가 없습니다.")
-        return
-    
-    try:
-        from exporters import ThumbnailDownloader
-        from tkinter import filedialog
-        import os
-        
-        # 다운로드 폴더 선택
-        download_dir = filedialog.askdirectory(
-            title="썸네일 다운로드 폴더 선택"
-        )
-        
-        if not download_dir:
+    def download_thumbnails(self):
+        """썸네일 다운로드"""
+        if not self.current_videos:
+            messagebox.showwarning("데이터 없음", "다운로드할 데이터가 없습니다.")
             return
         
-        # 썸네일 다운로드
-        downloader = ThumbnailDownloader(download_dir)
-        
-        # 진행률 다이얼로그 표시
-        from gui.dialogs.progress_dialog import ProgressDialog
-        
-        steps = ["썸네일 URL 추출", "이미지 다운로드", "파일 정리"]
-        progress_dialog = ProgressDialog(
-            self.main_window.root,
-            title="썸네일 다운로드",
-            steps=steps
-        )
-        
-        def download_thumbnails():
-            try:
-                progress_dialog.next_step("썸네일 URL 추출")
-                
-                # 영상 데이터에서 썸네일 URL 추출
-                video_list = []
-                for video in self.current_videos:
-                    video_info = {
-                        'id': video['id'],
-                        'title': video['snippet']['title'],
-                        'channel': video['snippet']['channelTitle'],
-                        'thumbnail_url': video['snippet'].get('thumbnails', {}).get('medium', {}).get('url', ''),
-                        'outlier_score': video.get('analysis', {}).get('outlier_score', 0)
-                    }
-                    video_list.append(video_info)
-                
-                progress_dialog.update_step_progress(100)
-                progress_dialog.next_step("이미지 다운로드")
-                
-                # 다운로드 실행
-                result = downloader.download_video_thumbnails(
-                    video_list,
-                    resize=(320, 180),
-                    create_zip=True
-                )
-                
-                progress_dialog.update_step_progress(100)
-                progress_dialog.next_step("파일 정리")
-                
-                # ZIP 파일 생성 (옵션)
-                if result.get('success') and result.get('downloaded_files'):
-                    zip_result = downloader._create_zip_file(result['downloaded_files'])
-                    if zip_result.get('success'):
-                        result['zip_file'] = zip_result['zip_path']
-                
-                progress_dialog.complete_all("썸네일 다운로드 완료!")
-                
-                # 결과 메시지
-                self.main_window.root.after(1000, lambda: self.show_download_result(result, download_dir))
-                
-            except Exception as e:
-                progress_dialog.abort_with_error(str(e))
-                self.main_window.root.after(1000, lambda: messagebox.showerror("다운로드 실패", str(e)))
-        
-        # 백그라운드에서 다운로드 실행
-        import threading
-        download_thread = threading.Thread(target=download_thumbnails, daemon=True)
-        download_thread.start()
-        
-        progress_dialog.show()
-        
-    except Exception as e:
-        messagebox.showerror("다운로드 실패", f"썸네일 다운로드 중 오류가 발생했습니다:\n{str(e)}")
-
-def show_download_result(self, result, download_dir):
-    """다운로드 결과 표시"""
-    if result.get('success'):
-        downloaded_count = result.get('successful_downloads', 0)
-        failed_count = result.get('failed_downloads', 0)
-        zip_file = result.get('zip_file', '')
-        
-        message = f"썸네일 다운로드 완료!\n\n"
-        message += f"성공: {downloaded_count}개\n"
-        message += f"실패: {failed_count}개\n"
-        message += f"저장 위치: {download_dir}\n"
-        
-        if zip_file:
-            message += f"\n📦 ZIP 파일: {os.path.basename(zip_file)}"
-        
-        # 폴더 열기 옵션
-        result_choice = messagebox.askyesno(
-            "다운로드 완료",
-            message + "\n\n폴더를 열까요?"
-        )
-        
-        if result_choice:
-            import subprocess
-            import platform
+        try:
+            from exporters import ThumbnailDownloader
+            from tkinter import filedialog
+            import os
             
-            try:
-                if platform.system() == "Windows":
-                    subprocess.run(["explorer", download_dir])
-                elif platform.system() == "Darwin":  # macOS
-                    subprocess.run(["open", download_dir])
-                else:  # Linux
-                    subprocess.run(["xdg-open", download_dir])
-            except Exception as e:
-                print(f"폴더 열기 실패: {e}")
+            # 다운로드 폴더 선택
+            download_dir = filedialog.askdirectory(
+                title="썸네일 다운로드 폴더 선택"
+            )
+            
+            if not download_dir:
+                return
+            
+            # 썸네일 다운로드
+            downloader = ThumbnailDownloader(download_dir)
+            
+            # 진행률 다이얼로그 표시
+            from gui.dialogs.progress_dialog import ProgressDialog
+            
+            steps = ["썸네일 URL 추출", "이미지 다운로드", "파일 정리"]
+            progress_dialog = ProgressDialog(
+                self.main_window.root,
+                title="썸네일 다운로드",
+                steps=steps
+            )
+            
+            def download_thumbnails():
+                try:
+                    progress_dialog.next_step("썸네일 URL 추출")
+                    
+                    # 영상 데이터에서 썸네일 URL 추출
+                    video_list = []
+                    for video in self.current_videos:
+                        video_info = {
+                            'id': video['id'],
+                            'title': video['snippet']['title'],
+                            'channel': video['snippet']['channelTitle'],
+                            'thumbnail_url': video['snippet'].get('thumbnails', {}).get('medium', {}).get('url', ''),
+                            'outlier_score': video.get('analysis', {}).get('outlier_score', 0)
+                        }
+                        video_list.append(video_info)
+                    
+                    progress_dialog.update_step_progress(100)
+                    progress_dialog.next_step("이미지 다운로드")
+                    
+                    # 다운로드 실행
+                    result = downloader.download_video_thumbnails(
+                        video_list,
+                        resize=(320, 180),
+                        create_zip=True
+                    )
+                    
+                    progress_dialog.update_step_progress(100)
+                    progress_dialog.next_step("파일 정리")
+                    
+                    # ZIP 파일 생성 (옵션)
+                    if result.get('success') and result.get('downloaded_files'):
+                        zip_result = downloader._create_zip_file(result['downloaded_files'])
+                        if zip_result.get('success'):
+                            result['zip_file'] = zip_result['zip_path']
+                    
+                    progress_dialog.complete_all("썸네일 다운로드 완료!")
+                    
+                    # 결과 메시지
+                    self.main_window.root.after(1000, lambda: self.show_download_result(result, download_dir))
+                    
+                except Exception as e:
+                    progress_dialog.abort_with_error(str(e))
+                    self.main_window.root.after(1000, lambda: messagebox.showerror("다운로드 실패", str(e)))
+            
+            # 백그라운드에서 다운로드 실행
+            import threading
+            download_thread = threading.Thread(target=download_thumbnails, daemon=True)
+            download_thread.start()
+            
+            progress_dialog.show()
+            
+        except Exception as e:
+            messagebox.showerror("다운로드 실패", f"썸네일 다운로드 중 오류가 발생했습니다:\n{str(e)}")
+
+    def show_download_result(self, result, download_dir):
+        """다운로드 결과 표시"""
+        if result.get('success'):
+            downloaded_count = result.get('successful_downloads', 0)
+            failed_count = result.get('failed_downloads', 0)
+            zip_file = result.get('zip_file', '')
+            
+            message = f"썸네일 다운로드 완료!\n\n"
+            message += f"성공: {downloaded_count}개\n"
+            message += f"실패: {failed_count}개\n"
+            message += f"저장 위치: {download_dir}\n"
+            
+            if zip_file:
+                message += f"\n📦 ZIP 파일: {os.path.basename(zip_file)}"
+            
+            # 폴더 열기 옵션
+            result_choice = messagebox.askyesno(
+                "다운로드 완료",
+                message + "\n\n폴더를 열까요?"
+            )
+            
+            if result_choice:
+                import subprocess
+                import platform
+                
+                try:
+                    if platform.system() == "Windows":
+                        subprocess.run(["explorer", download_dir])
+                    elif platform.system() == "Darwin":  # macOS
+                        subprocess.run(["open", download_dir])
+                    else:  # Linux
+                        subprocess.run(["xdg-open", download_dir])
+                except Exception as e:
+                    print(f"폴더 열기 실패: {e}")
+            
+            self.main_window.update_status(f"썸네일 {downloaded_count}개 다운로드 완료")
+        else:
+            messagebox.showerror("다운로드 실패", result.get('error', '알 수 없는 오류'))
+
+    def get_region_name(self, region_code):
+        """지역 코드를 이름으로 변환"""
+        region_names = {
+            'KR': '한국',
+            'US': '미국',
+            'JP': '일본',
+            'GB': '영국',
+            'DE': '독일',
+            'FR': '프랑스'
+        }
+        return region_names.get(region_code, region_code)
+
+    def get_video_type_name(self, video_type):
+        """영상 유형 코드를 이름으로 변환"""
+        type_names = {
+            'all': '전체',
+            'shorts': '쇼츠 (60초 이하)',
+            'long': '롱폼 (10분 이상)',
+            'medium': '일반 (1-10분)'
+        }
+        return type_names.get(video_type, video_type)
+
+    def format_number(self, number):
+        """숫자를 천 단위 구분자로 포맷"""
+        if number == 0:
+            return "0"
         
-        self.main_window.update_status(f"썸네일 {downloaded_count}개 다운로드 완료")
-    else:
-        messagebox.showerror("다운로드 실패", result.get('error', '알 수 없는 오류'))
+        if number >= 1000000:
+            return f"{number/1000000:.1f}M"
+        elif number >= 1000:
+            return f"{number/1000:.1f}K"
+        else:
+            return str(number)
 
-def get_region_name(self, region_code):
-    """지역 코드를 이름으로 변환"""
-    region_names = {
-        'KR': '한국',
-        'US': '미국',
-        'JP': '일본',
-        'GB': '영국',
-        'DE': '독일',
-        'FR': '프랑스'
-    }
-    return region_names.get(region_code, region_code)
+    def create_action_area_complete(self, parent):
+        """완성된 액션 영역"""
+        action_frame = tk.Frame(parent, bg='#f5f5f7')
+        action_frame.pack(fill='x')
+        
+        # 버튼 영역
+        button_frame = tk.Frame(action_frame, bg='#f5f5f7')
+        button_frame.pack(side='left')
+        
+        # 검색 버튼
+        self.search_button = tk.Button(
+            button_frame,
+            text="🔍 검색 시작",
+            font=('SF Pro Display', 12, 'bold'),
+            bg='#007aff',
+            fg='white',
+            width=15,
+            height=2,
+            borderwidth=0,
+            cursor='hand2',
+            command=self.start_search
+        )
+        self.search_button.pack(side='left', padx=(0, 10))
+        
+        # 중지 버튼
+        self.stop_button = tk.Button(
+            button_frame,
+            text="⏹ 중지",
+            font=('SF Pro Display', 12),
+            bg='#ff3b30',
+            fg='white',
+            width=12,
+            height=2,
+            borderwidth=0,
+            cursor='hand2',
+            command=self.stop_search,
+            state='disabled'
+        )
+        self.stop_button.pack(side='left', padx=(0, 10))
+        
+        # 내보내기 버튼들
+        export_frame = tk.Frame(button_frame, bg='#f5f5f7')
+        export_frame.pack(side='left', padx=(20, 0))
+        
+        # 엑셀 내보내기 버튼
+        self.excel_button = tk.Button(
+            export_frame,
+            text="📊 엑셀 내보내기",
+            font=('SF Pro Display', 11),
+            bg='#34c759',
+            fg='white',
+            width=15,
+            borderwidth=0,
+            cursor='hand2',
+            command=self.export_excel,
+            state='disabled'
+        )
+        self.excel_button.pack(side='left', padx=(0, 5))
+        
+        # 썸네일 다운로드 버튼
+        self.thumbnail_button = tk.Button(
+            export_frame,
+            text="🖼 썸네일 다운로드",
+            font=('SF Pro Display', 11),
+            bg='#ff9500',
+            fg='white',
+            width=15,
+            borderwidth=0,
+            cursor='hand2',
+            command=self.export_thumbnails,
+            state='disabled'
+        )
+        self.thumbnail_button.pack(side='left')
+        
+        # 진행률 영역
+        progress_frame = tk.Frame(action_frame, bg='#f5f5f7')
+        progress_frame.pack(side='right', fill='x', expand=True, padx=(20, 0))
+        
+        # 진행률 라벨
+        self.progress_label = tk.Label(
+            progress_frame,
+            text="대기 중...",
+            font=('SF Pro Display', 10),
+            bg='#f5f5f7',
+            fg='#86868b'
+        )
+        self.progress_label.pack(anchor='e', pady=(0, 5))
+        
+        # 진행률 바
+        self.progress_var = tk.DoubleVar()
+        self.progress_bar = ttk.Progressbar(
+            progress_frame,
+            variable=self.progress_var,
+            maximum=100,
+            length=300,
+            mode='determinate'
+        )
+        self.progress_bar.pack(anchor='e')
 
-def get_video_type_name(self, video_type):
-    """영상 유형 코드를 이름으로 변환"""
-    type_names = {
-        'all': '전체',
-        'shorts': '쇼츠 (60초 이하)',
-        'long': '롱폼 (10분 이상)',
-        'medium': '일반 (1-10분)'
-    }
-    return type_names.get(video_type, video_type)
+    def validate_search_inputs(self):
+        """검색 입력값 유효성 검사"""
+        keyword = self.keyword_entry.get().strip()
+        
+        if not keyword:
+            messagebox.showerror("입력 오류", "검색 키워드를 입력해주세요.")
+            self.keyword_entry.focus()
+            return False
+        
+        if len(keyword) < 2:
+            messagebox.showerror("입력 오류", "키워드는 2자 이상 입력해주세요.")
+            self.keyword_entry.focus()
+            return False
+        
+        if len(keyword) > 100:
+            messagebox.showerror("입력 오류", "키워드는 100자를 초과할 수 없습니다.")
+            self.keyword_entry.focus()
+            return False
+        
+        return True
 
-def format_number(self, number):
-    """숫자를 천 단위 구분자로 포맷"""
-    if number == 0:
-        return "0"
-    
-    if number >= 1000000:
-        return f"{number/1000000:.1f}M"
-    elif number >= 1000:
-        return f"{number/1000:.1f}K"
-    else:
-        return str(number)
+    def reset_ui_state(self):
+        """UI 상태 초기화"""
+        # 버튼 상태
+        self.search_button.config(state='normal', text="🔍 검색 시작")
+        self.stop_button.config(state='disabled')
+        self.excel_button.config(state='disabled')
+        self.thumbnail_button.config(state='disabled')
+        
+        # 진행률 초기화
+        self.progress_var.set(0)
+        self.progress_label.config(text="대기 중...")
+        
+        # 검색 플래그
+        self.is_analyzing = False
 
-def create_action_area_complete(self, parent):
-    """완성된 액션 영역"""
-    action_frame = tk.Frame(parent, bg='#f5f5f7')
-    action_frame.pack(fill='x')
-    
-    # 버튼 영역
-    button_frame = tk.Frame(action_frame, bg='#f5f5f7')
-    button_frame.pack(side='left')
-    
-    # 검색 버튼
-    self.search_button = tk.Button(
-        button_frame,
-        text="🔍 검색 시작",
-        font=('SF Pro Display', 12, 'bold'),
-        bg='#007aff',
-        fg='white',
-        width=15,
-        height=2,
-        borderwidth=0,
-        cursor='hand2',
-        command=self.start_search
-    )
-    self.search_button.pack(side='left', padx=(0, 10))
-    
-    # 중지 버튼
-    self.stop_button = tk.Button(
-        button_frame,
-        text="⏹ 중지",
-        font=('SF Pro Display', 12),
-        bg='#ff3b30',
-        fg='white',
-        width=12,
-        height=2,
-        borderwidth=0,
-        cursor='hand2',
-        command=self.stop_search,
-        state='disabled'
-    )
-    self.stop_button.pack(side='left', padx=(0, 10))
-    
-    # 내보내기 버튼들
-    export_frame = tk.Frame(button_frame, bg='#f5f5f7')
-    export_frame.pack(side='left', padx=(20, 0))
-    
-    # 엑셀 내보내기 버튼
-    self.excel_button = tk.Button(
-        export_frame,
-        text="📊 엑셀 내보내기",
-        font=('SF Pro Display', 11),
-        bg='#34c759',
-        fg='white',
-        width=15,
-        borderwidth=0,
-        cursor='hand2',
-        command=self.export_excel,
-        state='disabled'
-    )
-    self.excel_button.pack(side='left', padx=(0, 5))
-    
-    # 썸네일 다운로드 버튼
-    self.thumbnail_button = tk.Button(
-        export_frame,
-        text="🖼 썸네일 다운로드",
-        font=('SF Pro Display', 11),
-        bg='#ff9500',
-        fg='white',
-        width=15,
-        borderwidth=0,
-        cursor='hand2',
-        command=self.export_thumbnails,
-        state='disabled'
-    )
-    self.thumbnail_button.pack(side='left')
-    
-    # 진행률 영역
-    progress_frame = tk.Frame(action_frame, bg='#f5f5f7')
-    progress_frame.pack(side='right', fill='x', expand=True, padx=(20, 0))
-    
-    # 진행률 라벨
-    self.progress_label = tk.Label(
-        progress_frame,
-        text="대기 중...",
-        font=('SF Pro Display', 10),
-        bg='#f5f5f7',
-        fg='#86868b'
-    )
-    self.progress_label.pack(anchor='e', pady=(0, 5))
-    
-    # 진행률 바
-    self.progress_var = tk.DoubleVar()
-    self.progress_bar = ttk.Progressbar(
-        progress_frame,
-        variable=self.progress_var,
-        maximum=100,
-        length=300,
-        mode='determinate'
-    )
-    self.progress_bar.pack(anchor='e')
+    def update_progress(self, value, message=""):
+        """진행률 업데이트"""
+        self.progress_var.set(value)
+        if message:
+            self.progress_label.config(text=message)
+        
+        # UI 업데이트 강제 적용
+        self.main_window.root.update_idletasks()
+        
+        print(f"📊 진행률: {value:.1f}% - {message}")
 
-def validate_search_inputs(self):
-    """검색 입력값 유효성 검사"""
-    keyword = self.keyword_entry.get().strip()
-    
-    if not keyword:
-        messagebox.showerror("입력 오류", "검색 키워드를 입력해주세요.")
-        self.keyword_entry.focus()
-        return False
-    
-    if len(keyword) < 2:
-        messagebox.showerror("입력 오류", "키워드는 2자 이상 입력해주세요.")
-        self.keyword_entry.focus()
-        return False
-    
-    if len(keyword) > 100:
-        messagebox.showerror("입력 오류", "키워드는 100자를 초과할 수 없습니다.")
-        self.keyword_entry.focus()
-        return False
-    
-    return True
-
-def reset_ui_state(self):
-    """UI 상태 초기화"""
-    # 버튼 상태
-    self.search_button.config(state='normal', text="🔍 검색 시작")
-    self.stop_button.config(state='disabled')
-    self.excel_button.config(state='disabled')
-    self.thumbnail_button.config(state='disabled')
-    
-    # 진행률 초기화
-    self.progress_var.set(0)
-    self.progress_label.config(text="대기 중...")
-    
-    # 검색 플래그
-    self.is_analyzing = False
-
-def update_progress(self, value, message=""):
-    """진행률 업데이트"""
-    self.progress_var.set(value)
-    if message:
-        self.progress_label.config(text=message)
-    
-    # UI 업데이트 강제 적용
-    self.main_window.root.update_idletasks()
-    
-    print(f"📊 진행률: {value:.1f}% - {message}")
-
-def enable_search_ui(self):
-    """검색 UI 활성화"""
-    self.search_button.config(state='normal', text="🔍 검색 시작")
-    self.stop_button.config(state='disabled')
-    
-def disable_search_ui(self):
-    """검색 UI 비활성화 (검색 중)"""
-    self.search_button.config(state='disabled', text="검색 중...")
-    self.stop_button.config(state='normal')
+    def enable_search_ui(self):
+        """검색 UI 활성화"""
+        self.search_button.config(state='normal', text="🔍 검색 시작")
+        self.stop_button.config(state='disabled')
+        
+    def disable_search_ui(self):
+        """검색 UI 비활성화 (검색 중)"""
+        self.search_button.config(state='disabled', text="검색 중...")
+        self.stop_button.config(state='normal')

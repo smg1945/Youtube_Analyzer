@@ -1,34 +1,52 @@
 """
 utils/__init__.py
-유틸리티 모듈의 진입점
+유틸리티 모듈의 진입점 (완전 버전)
 """
 
+# 모든 모듈 import
 from .formatters import (
     format_number, format_duration, format_datetime, 
-    format_file_size, format_percentage, format_views_short
+    format_file_size, format_percentage, format_views_short,
+    format_outlier_score, clean_filename, format_relative_time,
+    format_currency, format_score, format_ratio, truncate_text,
+    format_list, format_engagement_rate
 )
+
 from .validators import (
     validate_api_key, validate_youtube_url, validate_channel_id,
-    validate_search_keyword, validate_file_path, validate_settings
+    validate_search_keyword, validate_file_path, validate_settings,
+    validate_video_id, validate_date_range, validate_region_code,
+    validate_language_code
 )
+
 from .cache_manager import CacheManager
-from .error_handler import ErrorHandler, handle_api_error, log_error
+
+from .error_handler import (
+    ErrorHandler, handle_api_error, log_error, handle_file_error,
+    handle_validation_error, setup_global_error_handler
+)
 
 __version__ = "3.0.0"
 __all__ = [
     # Formatters
     'format_number', 'format_duration', 'format_datetime',
     'format_file_size', 'format_percentage', 'format_views_short',
+    'format_outlier_score', 'clean_filename', 'format_relative_time',
+    'format_currency', 'format_score', 'format_ratio', 'truncate_text',
+    'format_list', 'format_engagement_rate',
     
     # Validators
     'validate_api_key', 'validate_youtube_url', 'validate_channel_id',
     'validate_search_keyword', 'validate_file_path', 'validate_settings',
+    'validate_video_id', 'validate_date_range', 'validate_region_code',
+    'validate_language_code',
     
     # Cache Manager
     'CacheManager',
     
     # Error Handler
-    'ErrorHandler', 'handle_api_error', 'log_error'
+    'ErrorHandler', 'handle_api_error', 'log_error', 'handle_file_error',
+    'handle_validation_error', 'setup_global_error_handler'
 ]
 
 # 전역 인스턴스들
@@ -52,14 +70,14 @@ def get_error_handler():
 def clear_cache():
     """전역 캐시 정리"""
     cache_manager = get_cache_manager()
-    cache_manager.clear_all()
+    return cache_manager.clear_all()
 
 def setup_error_logging(log_file=None, log_level='INFO'):
     """에러 로깅 설정"""
     error_handler = get_error_handler()
     error_handler.setup_logging(log_file, log_level)
 
-# 편의 함수들
+# 추가 편의 함수들
 def safe_int(value, default=0):
     """안전한 정수 변환"""
     try:
@@ -81,64 +99,20 @@ def safe_string(value, default=""):
     except:
         return default
 
-def truncate_string(text, max_length=50, suffix="..."):
-    """문자열 자르기"""
-    if not text:
-        return ""
-    
-    if len(text) <= max_length:
-        return text
-    
-    return text[:max_length - len(suffix)] + suffix
-
-def clean_filename(filename):
-    """파일명에서 유효하지 않은 문자 제거"""
+def parse_duration(duration_str):
+    """YouTube 영상 길이 파싱 (초 단위로 변환)"""
     import re
     
-    # Windows/macOS/Linux에서 파일명으로 사용할 수 없는 문자들
-    invalid_chars = r'[<>:"/\\|?*]'
+    if not duration_str:
+        return 0
     
-    # 유효하지 않은 문자를 언더스코어로 대체
-    clean_name = re.sub(invalid_chars, '_', filename)
+    # ISO 8601 duration (PT4M13S) 형태 처리
+    if duration_str.startswith('PT'):
+        pattern = r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
+    else:
+        # 이미 포맷된 형태 (4:13, 1:04:13)
+        pattern = r'(?:(\d+):)?(\d+):(\d+)'
     
-    # 연속된 언더스코어를 하나로
-    clean_name = re.sub(r'_+', '_', clean_name)
-    
-    # 앞뒤 공백 및 점 제거
-    clean_name = clean_name.strip(' .')
-    
-    # 너무 긴 경우 자르기
-    if len(clean_name) > 200:
-        clean_name = clean_name[:200]
-    
-    return clean_name or "untitled"
-
-def is_valid_url(url):
-    """URL 유효성 검사"""
-    import re
-    
-    url_pattern = re.compile(
-        r'^https?://'  # http:// 또는 https://
-        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # 도메인
-        r'localhost|'  # localhost
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # IP
-        r'(?::\d+)?'  # 포트
-        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-    
-    return url_pattern.match(url) is not None
-
-def calculate_percentage(part, total):
-    """백분율 계산"""
-    if total == 0:
-        return 0.0
-    
-    return round((part / total) * 100, 2)
-
-def parse_youtube_duration(duration_str):
-    """YouTube duration 문자열 파싱 (PT15M33S -> 초)"""
-    import re
-    
-    pattern = r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
     match = re.match(pattern, duration_str)
     
     if not match:
@@ -288,60 +262,33 @@ def hash_string(text, algorithm='md5'):
     }
     
     if algorithm not in hash_algorithms:
-        raise ValueError(f"지원하지 않는 해시 알고리즘: {algorithm}")
+        algorithm = 'md5'
     
     hash_func = hash_algorithms[algorithm]
     return hash_func(text.encode('utf-8')).hexdigest()
 
-def deep_merge_dicts(dict1, dict2):
-    """딕셔너리 깊은 병합"""
-    result = dict1.copy()
+def is_valid_url(url):
+    """URL 유효성 검사"""
+    import re
     
-    for key, value in dict2.items():
-        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-            result[key] = deep_merge_dicts(result[key], value)
-        else:
-            result[key] = value
+    url_pattern = re.compile(
+        r'^https?://'  # http:// or https://
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # domain...
+        r'localhost|'  # localhost...
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # ...or ip
+        r'(?::\d+)?'  # optional port
+        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
     
-    return result
+    return url_pattern.match(url) is not None
 
-def chunks(lst, chunk_size):
-    """리스트를 지정된 크기로 분할"""
-    for i in range(0, len(lst), chunk_size):
-        yield lst[i:i + chunk_size]
+# __all__에 추가 함수들 포함
+__all__.extend([
+    'safe_int', 'safe_float', 'safe_string', 'parse_duration',
+    'extract_video_id_from_url', 'get_file_extension', 'ensure_directory_exists',
+    'get_system_info', 'measure_execution_time', 'format_bytes',
+    'generate_timestamp', 'retry_on_failure', 'hash_string', 'is_valid_url',
+    'get_cache_manager', 'get_error_handler', 'clear_cache', 'setup_error_logging'
+])
 
-def flatten_list(nested_list):
-    """중첩 리스트를 평면화"""
-    result = []
-    for item in nested_list:
-        if isinstance(item, list):
-            result.extend(flatten_list(item))
-        else:
-            result.append(item)
-    return result
-
-def get_memory_usage():
-    """현재 메모리 사용량 반환 (MB)"""
-    import psutil
-    import os
-    
-    try:
-        process = psutil.Process(os.getpid())
-        memory_info = process.memory_info()
-        return round(memory_info.rss / 1024 / 1024, 2)  # MB 단위
-    except ImportError:
-        return None  # psutil이 설치되지 않은 경우
-
-def create_progress_indicator(total, prefix='진행률'):
-    """진행률 표시기 생성"""
-    def update_progress(current):
-        percentage = (current / total) * 100
-        bar_length = 30
-        filled_length = int(bar_length * current // total)
-        bar = '█' * filled_length + '░' * (bar_length - filled_length)
-        print(f'\r{prefix}: [{bar}] {current}/{total} ({percentage:.1f}%)', end='', flush=True)
-        
-        if current >= total:
-            print()  # 완료 시 줄바꿈
-    
-    return update_progress
+# 초기화 메시지
+print("✅ Utils 모듈 로드 완료 (formatters, validators, cache_manager, error_handler)")
