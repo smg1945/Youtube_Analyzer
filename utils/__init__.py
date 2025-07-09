@@ -1,83 +1,38 @@
 """
 utils/__init__.py
-유틸리티 모듈의 진입점 (완전 버전)
+유틸리티 모듈의 진입점 (수정됨)
 """
 
-# 모든 모듈 import
-from .formatters import (
-    format_number, format_duration, format_datetime, 
-    format_file_size, format_percentage, format_views_short,
-    format_outlier_score, clean_filename, format_relative_time,
-    format_currency, format_score, format_ratio, truncate_text,
-    format_list, format_engagement_rate
-)
+# 현재 사용 가능한 모듈만 import
+try:
+    from .formatters import (
+        format_number, format_duration, format_datetime, 
+        format_file_size, format_percentage, format_views_short,
+        format_outlier_score, clean_filename
+    )
+    FORMATTERS_AVAILABLE = True
+except ImportError:
+    FORMATTERS_AVAILABLE = False
+    print("⚠️ formatters 모듈을 로드할 수 없습니다.")
 
-from .validators import (
-    validate_api_key, validate_youtube_url, validate_channel_id,
-    validate_search_keyword, validate_file_path, validate_settings,
-    validate_video_id, validate_date_range, validate_region_code,
-    validate_language_code
-)
-
-from .cache_manager import CacheManager
-
-from .error_handler import (
-    ErrorHandler, handle_api_error, log_error, handle_file_error,
-    handle_validation_error, setup_global_error_handler
-)
+# 다른 모듈들은 차차 구현 예정
+VALIDATORS_AVAILABLE = False
+CACHE_MANAGER_AVAILABLE = False
+ERROR_HANDLER_AVAILABLE = False
 
 __version__ = "3.0.0"
-__all__ = [
-    # Formatters
-    'format_number', 'format_duration', 'format_datetime',
-    'format_file_size', 'format_percentage', 'format_views_short',
-    'format_outlier_score', 'clean_filename', 'format_relative_time',
-    'format_currency', 'format_score', 'format_ratio', 'truncate_text',
-    'format_list', 'format_engagement_rate',
-    
-    # Validators
-    'validate_api_key', 'validate_youtube_url', 'validate_channel_id',
-    'validate_search_keyword', 'validate_file_path', 'validate_settings',
-    'validate_video_id', 'validate_date_range', 'validate_region_code',
-    'validate_language_code',
-    
-    # Cache Manager
-    'CacheManager',
-    
-    # Error Handler
-    'ErrorHandler', 'handle_api_error', 'log_error', 'handle_file_error',
-    'handle_validation_error', 'setup_global_error_handler'
-]
 
-# 전역 인스턴스들
-_cache_manager = None
-_error_handler = None
+# 사용 가능한 기능만 __all__에 포함
+__all__ = []
 
-def get_cache_manager():
-    """전역 캐시 매니저 인스턴스 반환"""
-    global _cache_manager
-    if _cache_manager is None:
-        _cache_manager = CacheManager()
-    return _cache_manager
+if FORMATTERS_AVAILABLE:
+    __all__.extend([
+        'format_number', 'format_duration', 'format_datetime',
+        'format_file_size', 'format_percentage', 'format_views_short',
+        'format_outlier_score', 'clean_filename'
+    ])
 
-def get_error_handler():
-    """전역 에러 핸들러 인스턴스 반환"""
-    global _error_handler
-    if _error_handler is None:
-        _error_handler = ErrorHandler()
-    return _error_handler
-
-def clear_cache():
-    """전역 캐시 정리"""
-    cache_manager = get_cache_manager()
-    return cache_manager.clear_all()
-
-def setup_error_logging(log_file=None, log_level='INFO'):
-    """에러 로깅 설정"""
-    error_handler = get_error_handler()
-    error_handler.setup_logging(log_file, log_level)
-
-# 추가 편의 함수들
+# 기본 유틸리티 함수들 (내장)
 def safe_int(value, default=0):
     """안전한 정수 변환"""
     try:
@@ -98,6 +53,16 @@ def safe_string(value, default=""):
         return str(value) if value is not None else default
     except:
         return default
+
+def truncate_string(text, max_length=50, suffix="..."):
+    """문자열 자르기"""
+    if not text:
+        return ""
+    
+    if len(text) <= max_length:
+        return text
+    
+    return text[:max_length - len(suffix)] + suffix
 
 def parse_duration(duration_str):
     """YouTube 영상 길이 파싱 (초 단위로 변환)"""
@@ -173,24 +138,6 @@ def get_system_info():
         'architecture': platform.architecture()[0]
     }
 
-def measure_execution_time(func):
-    """함수 실행 시간 측정 데코레이터"""
-    import time
-    import functools
-    
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        start_time = time.time()
-        result = func(*args, **kwargs)
-        end_time = time.time()
-        
-        execution_time = end_time - start_time
-        print(f"{func.__name__} 실행 시간: {execution_time:.3f}초")
-        
-        return result
-    
-    return wrapper
-
 def format_bytes(bytes_value):
     """바이트를 읽기 쉬운 형태로 포맷"""
     if bytes_value == 0:
@@ -221,52 +168,6 @@ def generate_timestamp(format_type='full'):
     
     return now.strftime(formats.get(format_type, formats['full']))
 
-def retry_on_failure(max_attempts=3, delay=1, backoff_factor=2):
-    """재시도 데코레이터"""
-    import time
-    import functools
-    
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            last_exception = None
-            
-            for attempt in range(max_attempts):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    last_exception = e
-                    
-                    if attempt < max_attempts - 1:
-                        wait_time = delay * (backoff_factor ** attempt)
-                        print(f"재시도 {attempt + 1}/{max_attempts}: {wait_time}초 후 다시 시도...")
-                        time.sleep(wait_time)
-                    else:
-                        print(f"최대 재시도 횟수 초과: {func.__name__}")
-            
-            # 모든 재시도 실패 시 마지막 예외 발생
-            raise last_exception
-        
-        return wrapper
-    return decorator
-
-def hash_string(text, algorithm='md5'):
-    """문자열 해시 생성"""
-    import hashlib
-    
-    hash_algorithms = {
-        'md5': hashlib.md5,
-        'sha1': hashlib.sha1,
-        'sha256': hashlib.sha256,
-        'sha512': hashlib.sha512
-    }
-    
-    if algorithm not in hash_algorithms:
-        algorithm = 'md5'
-    
-    hash_func = hash_algorithms[algorithm]
-    return hash_func(text.encode('utf-8')).hexdigest()
-
 def is_valid_url(url):
     """URL 유효성 검사"""
     import re
@@ -281,14 +182,75 @@ def is_valid_url(url):
     
     return url_pattern.match(url) is not None
 
+# 기본 캐시 관리 (단순 버전)
+_simple_cache = {}
+
+def get_cache(key):
+    """간단한 캐시에서 값 가져오기"""
+    return _simple_cache.get(key)
+
+def set_cache(key, value):
+    """간단한 캐시에 값 저장"""
+    _simple_cache[key] = value
+
+def clear_cache():
+    """간단한 캐시 정리"""
+    global _simple_cache
+    _simple_cache.clear()
+
+# 기본 에러 처리
+def log_error(error_msg, error_type="ERROR"):
+    """간단한 에러 로깅"""
+    from datetime import datetime
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    print(f"[{timestamp}] {error_type}: {error_msg}")
+
+def handle_api_error(error):
+    """API 에러 처리"""
+    error_msg = str(error)
+    
+    if "quotaExceeded" in error_msg:
+        return "API 할당량이 초과되었습니다. 내일 다시 시도하세요."
+    elif "keyInvalid" in error_msg:
+        return "API 키가 유효하지 않습니다. 키를 확인하세요."
+    elif "keyMissing" in error_msg:
+        return "API 키가 설정되지 않았습니다."
+    else:
+        return f"API 오류: {error_msg}"
+
+# 기본 유효성 검증
+def validate_api_key(api_key):
+    """API 키 기본 유효성 검사"""
+    if not api_key or not isinstance(api_key, str):
+        return False
+    
+    # 기본 형태 확인 (39자리 영숫자)
+    if len(api_key) != 39:
+        return False
+    
+    # 알파벳과 숫자, 하이픈, 언더스코어만 허용
+    import re
+    return bool(re.match(r'^[A-Za-z0-9_-]+$', api_key))
+
+def validate_youtube_url(url):
+    """YouTube URL 유효성 검사"""
+    if not url:
+        return False
+    
+    youtube_patterns = [
+        r'youtube\.com',
+        r'youtu\.be',
+        r'youtube-nocookie\.com'
+    ]
+    
+    return any(pattern in url.lower() for pattern in youtube_patterns)
+
 # __all__에 추가 함수들 포함
 __all__.extend([
-    'safe_int', 'safe_float', 'safe_string', 'parse_duration',
-    'extract_video_id_from_url', 'get_file_extension', 'ensure_directory_exists',
-    'get_system_info', 'measure_execution_time', 'format_bytes',
-    'generate_timestamp', 'retry_on_failure', 'hash_string', 'is_valid_url',
-    'get_cache_manager', 'get_error_handler', 'clear_cache', 'setup_error_logging'
+    'safe_int', 'safe_float', 'safe_string', 'truncate_string',
+    'parse_duration', 'extract_video_id_from_url', 'get_file_extension',
+    'ensure_directory_exists', 'get_system_info', 'format_bytes',
+    'generate_timestamp', 'is_valid_url', 'get_cache', 'set_cache',
+    'clear_cache', 'log_error', 'handle_api_error', 'validate_api_key',
+    'validate_youtube_url'
 ])
-
-# 초기화 메시지
-print("✅ Utils 모듈 로드 완료 (formatters, validators, cache_manager, error_handler)")
