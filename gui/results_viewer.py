@@ -76,7 +76,7 @@ class ResultsViewer:
         
         # 분석 일시
         self.summary_labels['timestamp'] = self.create_summary_item(
-            row1_frame, "분석 일시:", "없음", 0, 3, 2
+            row1_frame, "분석 일시:", "없음", 0, 4, 2
         )
         
         # 두 번째 행
@@ -88,19 +88,23 @@ class ResultsViewer:
             row2_frame, "평균 조회수:", "0", 0, 0, 1
         )
         
-        # 평균 참여도
+        # 평균 참여도  
         self.summary_labels['avg_engagement'] = self.create_summary_item(
-            row2_frame, "평균 참여도:", "0.0", 0, 1, 1
+            row2_frame, "평균 참여도:", "0.0%", 0, 2, 1
         )
         
-        # 바이럴 영상 수
-        self.summary_labels['viral_count'] = self.create_summary_item(
-            row2_frame, "바이럴 영상:", "0개", 0, 2, 1
+        # 고성과 영상 수
+        self.summary_labels['high_performers'] = self.create_summary_item(
+            row2_frame, "고성과 영상:", "0개", 0, 4, 1  
         )
         
-        # 상위 성과 영상
-        self.summary_labels['top_performer'] = self.create_summary_item(
-            row2_frame, "최고 성과:", "없음", 0, 3, 2
+        # 세 번째 행 (키워드)
+        row3_frame = tk.Frame(summary_frame, bg='#f5f5f7')
+        row3_frame.pack(fill='x', pady=(10, 0))
+        
+        # 트렌드 키워드
+        self.summary_labels['keywords'] = self.create_summary_item(
+            row3_frame, "트렌드 키워드:", "없음", 0, 0, 6
         )
     
     def create_summary_item(self, parent, label_text, value_text, row, col, colspan=1):
@@ -123,7 +127,11 @@ class ResultsViewer:
             bg='#f5f5f7',
             fg='#1d1d1f'
         )
-        value_label.grid(row=row, column=col+1, sticky='w', padx=(0, 20), columnspan=colspan-1)
+
+        if colspan > 1:
+            value_label.grid(row=row, column=col+1, sticky='w', padx=(0, 20), columnspan=colspan-1)
+        else:
+            value_label.grid(row=row, column=col+1, sticky='w', padx=(0, 20))
         
         return value_label
 
@@ -385,6 +393,9 @@ class ResultsViewer:
         try:
             print(f"📊 결과 표시: {len(videos_data)}개 영상")
             
+            # 이전 결과 정리
+            self.clear_previous_results()
+            
             # 데이터 저장
             self.current_videos = videos_data
             self.current_settings = analysis_settings or {}
@@ -410,7 +421,7 @@ class ResultsViewer:
             settings = self.current_settings
             
             # 분석 모드
-            mode_name = settings.get('mode_name', '알 수 없음')
+            mode_name = settings.get('mode_name', '키워드 검색')
             self.summary_labels['mode'].config(text=mode_name)
             
             # 총 영상 수
@@ -422,36 +433,67 @@ class ResultsViewer:
             if timestamp:
                 try:
                     from datetime import datetime
-                    dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                    formatted_time = dt.strftime('%Y-%m-%d %H:%M')
+                    if 'T' in timestamp:  # ISO format
+                        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                        formatted_time = dt.strftime('%Y-%m-%d %H:%M')
+                    else:
+                        formatted_time = timestamp
                     self.summary_labels['timestamp'].config(text=formatted_time)
                 except:
-                    self.summary_labels['timestamp'].config(text="알 수 없음")
+                    self.summary_labels['timestamp'].config(text="방금 전")
+            else:
+                self.summary_labels['timestamp'].config(text="방금 전")
             
             # 평균 조회수 계산
             total_views = sum(int(v['statistics'].get('viewCount', 0)) for v in self.current_videos)
             avg_views = total_views / total_count if total_count > 0 else 0
             self.summary_labels['avg_views'].config(text=self.format_number(int(avg_views)))
             
-            # 고성과 영상 수
-            high_performers = [v for v in self.current_videos 
-                            if v.get('analysis', {}).get('outlier_score', 0) >= 2.0]
-            self.summary_labels['high_performers'].config(text=f"{len(high_performers)}개")
+            # 평균 참여도 계산
+            total_engagement = 0
+            for video in self.current_videos:
+                views = int(video['statistics'].get('viewCount', 0))
+                likes = int(video['statistics'].get('likeCount', 0))
+                comments = int(video['statistics'].get('commentCount', 0))
+                if views > 0:
+                    engagement = ((likes + comments) / views) * 100
+                    total_engagement += engagement
+            
+            avg_engagement = total_engagement / total_count if total_count > 0 else 0
+            self.summary_labels['avg_engagement'].config(text=f"{avg_engagement:.1f}%")
+            
+            # 고성과 영상 수 (상위 20%)
+            high_threshold = total_count * 0.2
+            sorted_videos = sorted(self.current_videos, 
+                                key=lambda x: int(x['statistics'].get('viewCount', 0)), 
+                                reverse=True)
+            high_performers_count = max(1, int(high_threshold))
+            self.summary_labels['high_performers'].config(text=f"{high_performers_count:,}개")
             
             # 트렌드 키워드 (상위 5개)
             all_keywords = []
             for video in self.current_videos:
-                keywords = video.get('analysis', {}).get('keywords', [])
-                all_keywords.extend(keywords)
+                # 제목에서 간단한 키워드 추출
+                title = video['snippet'].get('title', '')
+                simple_keywords = [word for word in title.split() if len(word) >= 2][:3]
+                all_keywords.extend(simple_keywords)
             
-            from collections import Counter
-            keyword_counts = Counter(all_keywords)
-            top_keywords = [kw for kw, _ in keyword_counts.most_common(5)]
-            keywords_text = ', '.join(top_keywords) if top_keywords else "없음"
-            self.summary_labels['keywords'].config(text=keywords_text[:50] + "..." if len(keywords_text) > 50 else keywords_text)
-            
+            if all_keywords:
+                from collections import Counter
+                keyword_counts = Counter(all_keywords)
+                top_keywords = [kw for kw, _ in keyword_counts.most_common(5)]
+                keywords_text = ', '.join(top_keywords)
+                if len(keywords_text) > 50:
+                    keywords_text = keywords_text[:50] + "..."
+                self.summary_labels['keywords'].config(text=keywords_text)
+            else:
+                self.summary_labels['keywords'].config(text="키워드 없음")
+                
         except Exception as e:
             print(f"요약 정보 업데이트 오류: {e}")
+            # 기본값으로 설정
+            for key, label in self.summary_labels.items():
+                label.config(text="오류")
 
     def update_table(self):
         """테이블 업데이트"""
@@ -624,11 +666,34 @@ class ResultsViewer:
         except Exception as e:
             print(f"URL 복사 오류: {e}")
 
-    def format_number(self, number):
+    def format_number(self, num):
         """숫자 포맷팅"""
-        if number >= 1000000:
-            return f"{number/1000000:.1f}M"
-        elif number >= 1000:
-            return f"{number/1000:.1f}K"
-        else:
-            return f"{number:,}"
+        try:
+            if num >= 1000000:
+                return f"{num/1000000:.1f}M"
+            elif num >= 1000:
+                return f"{num/1000:.1f}K"
+            else:
+                return f"{num:,}"
+        except:
+            return "0"
+
+    def clear_previous_results(self):
+        """이전 결과 정리"""
+        try:
+            # 테이블 초기화
+            if hasattr(self, 'tree'):
+                for item in self.tree.get_children():
+                    self.tree.delete(item)
+            
+            # 요약 정보 초기화
+            if hasattr(self, 'summary_labels'):
+                for label in self.summary_labels.values():
+                    label.config(text="로딩 중...")
+            
+            # 데이터 초기화
+            self.current_videos = []
+            self.current_settings = {}
+            
+        except Exception as e:
+            print(f"이전 결과 정리 오류: {e}")

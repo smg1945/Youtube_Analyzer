@@ -264,12 +264,12 @@ class SettingsDialog:
         main_frame = tk.Frame(tab_frame, bg='#f5f5f7')
         main_frame.pack(fill='both', expand=True, padx=20, pady=20)
         
-        # 기본 경로 설정
-        paths_frame = tk.LabelFrame(main_frame, text="기본 저장 경로", bg='#f5f5f7', padx=15, pady=15)
+        # 경로 설정
+        paths_frame = tk.LabelFrame(main_frame, text="저장 경로", bg='#f5f5f7', padx=15, pady=15)
         paths_frame.pack(fill='x', pady=(0, 20))
         
-        # 엑셀 내보내기 경로
-        tk.Label(paths_frame, text="엑셀 파일:", bg='#f5f5f7').grid(row=0, column=0, sticky='w', pady=5)
+        # 엑셀 파일 경로
+        tk.Label(paths_frame, text="엑셀:", bg='#f5f5f7').grid(row=0, column=0, sticky='w', pady=5)
         self.excel_path_var = tk.StringVar(value=os.path.expanduser("~/Downloads"))
         excel_path_entry = tk.Entry(paths_frame, textvariable=self.excel_path_var, width=30)
         excel_path_entry.grid(row=0, column=1, sticky='w', padx=(10, 0))
@@ -285,7 +285,7 @@ class SettingsDialog:
         )
         excel_browse_btn.grid(row=0, column=2, padx=(10, 0))
         
-        # 썸네일 다운로드 경로
+        # 썸네일 경로
         tk.Label(paths_frame, text="썸네일:", bg='#f5f5f7').grid(row=1, column=0, sticky='w', pady=5)
         self.thumbnail_path_var = tk.StringVar(value=os.path.expanduser("~/Downloads/thumbnails"))
         thumbnail_path_entry = tk.Entry(paths_frame, textvariable=self.thumbnail_path_var, width=30)
@@ -302,38 +302,9 @@ class SettingsDialog:
         )
         thumbnail_browse_btn.grid(row=1, column=2, padx=(10, 0))
         
-        # 대본 다운로드 경로
-        tk.Label(paths_frame, text="대본:", bg='#f5f5f7').grid(row=2, column=0, sticky='w', pady=5)
-        self.transcript_path_var = tk.StringVar(value=os.path.expanduser("~/Downloads/transcripts"))
-        transcript_path_entry = tk.Entry(paths_frame, textvariable=self.transcript_path_var, width=30)
-        transcript_path_entry.grid(row=2, column=1, sticky='w', padx=(10, 0))
-        
-        transcript_browse_btn = tk.Button(
-            paths_frame,
-            text="찾기",
-            command=lambda: self.browse_folder(self.transcript_path_var),
-            bg='#86868b',
-            fg='white',
-            borderwidth=0,
-            cursor='hand2'
-        )
-        transcript_browse_btn.grid(row=2, column=2, padx=(10, 0))
-        
         # 내보내기 옵션
         export_frame = tk.LabelFrame(main_frame, text="내보내기 옵션", bg='#f5f5f7', padx=15, pady=15)
         export_frame.pack(fill='x', pady=(0, 20))
-        
-        # 썸네일 품질
-        tk.Label(export_frame, text="썸네일 품질:", bg='#f5f5f7').grid(row=0, column=0, sticky='w', pady=5)
-        self.thumbnail_quality_var = tk.StringVar(value="high")
-        quality_combo = ttk.Combobox(
-            export_frame,
-            textvariable=self.thumbnail_quality_var,
-            values=["maxres", "high", "medium", "default"],
-            state="readonly",
-            width=10
-        )
-        quality_combo.grid(row=0, column=1, sticky='w', padx=(10, 0))
         
         # 자동 압축
         self.auto_zip_var = tk.BooleanVar(value=True)
@@ -342,7 +313,7 @@ class SettingsDialog:
             text="다운로드 후 자동으로 ZIP 파일 생성",
             variable=self.auto_zip_var,
             bg='#f5f5f7'
-        ).grid(row=1, column=0, columnspan=2, sticky='w', pady=5)
+        ).grid(row=1, column=0, columnspan=2, sticky='w', pady=5)  # columnspan=2로 수정
         
         # 기존 파일 덮어쓰기
         self.overwrite_files_var = tk.BooleanVar(value=False)
@@ -351,7 +322,7 @@ class SettingsDialog:
             text="기존 파일 덮어쓰기",
             variable=self.overwrite_files_var,
             bg='#f5f5f7'
-        ).grid(row=2, column=0, columnspan=2, sticky='w', pady=5)
+        ).grid(row=2, column=0, columnspan=2, sticky='w', pady=5)  # columnspan=2로 수정
     
     def create_advanced_tab(self):
         """고급 설정 탭"""

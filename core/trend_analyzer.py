@@ -92,7 +92,7 @@ class TrendAnalyzer:
             'total_views': 0,
             'avg_views': 0,
             'videos': [],
-            'categories': set(),
+            'categories': set(),  # set으로 초기화
             'first_seen': None,
             'last_seen': None
         })
@@ -130,7 +130,7 @@ class TrendAnalyzer:
                         stats = keyword_stats[keyword]
                         stats['count'] += 1
                         stats['total_views'] += views
-                        stats['categories'].add(category_id)
+                        stats['categories'].add(category_id)  # set.add() 안전하게 사용
                         
                         video_info = {
                             'title': title,
@@ -154,10 +154,11 @@ class TrendAnalyzer:
                 print(f"⚠️ 영상 처리 오류 (ID: {video.get('id', 'Unknown')}): {e}")
                 continue
         
-        # 평균 조회수 계산
+        # 평균 조회수 계산 및 set -> list 변환
         for keyword, stats in keyword_stats.items():
             if stats['count'] > 0:
                 stats['avg_views'] = stats['total_views'] // stats['count']
+                # set을 list로 변환 (JSON 직렬화 가능하도록)
                 stats['categories'] = list(stats['categories'])
         
         print(f"✅ 키워드 추출 완료: {len(keyword_stats)}개 고유 키워드")
@@ -203,44 +204,50 @@ class TrendAnalyzer:
         trend_scores = {}
         
         for keyword, stats in keyword_stats.items():
-            # 트렌드 점수 = (등장 빈도 × 평균 조회수) / 1000000
-            # 추가 가중치: 카테고리 다양성, 최신성
-            
-            base_score = (stats['count'] * stats['avg_views']) / 1000000
-            
-            # 카테고리 다양성 보너스
-            category_bonus = min(len(stats['categories']) * 0.1, 0.5)
-            
-            # 최신성 보너스 (최근 24시간 내 등장한 키워드)
-            recency_bonus = 0
-            if stats['last_seen']:
-                try:
-                    last_seen_dt = datetime.fromisoformat(stats['last_seen'].replace('Z', '+00:00'))
-                    hours_ago = (datetime.now(last_seen_dt.tzinfo) - last_seen_dt).total_seconds() / 3600
-                    if hours_ago <= 24:
-                        recency_bonus = 0.3
-                except:
-                    pass
-            
-            final_score = base_score * (1 + category_bonus + recency_bonus)
-            
-            trend_scores[keyword] = {
-                'score': round(final_score, 2),
-                'frequency': stats['count'],
-                'avg_views': stats['avg_views'],
-                'total_views': stats['total_views'],
-                'category_count': len(stats['categories']),
-                'categories': stats['categories'],
-                'recency_hours': self._calculate_recency_hours(stats['last_seen']) if stats['last_seen'] else None,
-                'sample_videos': sorted(stats['videos'], key=lambda x: x['views'], reverse=True)[:3]
-            }
+            try:
+                # 기본 점수 계산
+                base_score = (stats['count'] * stats['avg_views']) / 1000000
+                
+                # 카테고리 다양성 보너스 - 안전하게 처리
+                categories = stats.get('categories', [])
+                if isinstance(categories, set):
+                    categories = list(categories)
+                elif not isinstance(categories, list):
+                    categories = []
+                
+                category_bonus = min(len(categories) * 0.1, 0.5)
+                
+                # 최신성 보너스
+                recency_bonus = 0
+                if stats.get('last_seen'):
+                    try:
+                        last_seen_dt = datetime.fromisoformat(stats['last_seen'].replace('Z', '+00:00'))
+                        hours_ago = (datetime.now(last_seen_dt.tzinfo) - last_seen_dt).total_seconds() / 3600
+                        if hours_ago <= 24:
+                            recency_bonus = 0.3
+                    except Exception as e:
+                        print(f"시간 계산 오류: {e}")
+                        pass
+                
+                final_score = base_score * (1 + category_bonus + recency_bonus)
+                
+                trend_scores[keyword] = {
+                    'score': round(final_score, 2),
+                    'keyword': keyword,
+                    'count': stats['count'],
+                    'avg_views': stats['avg_views'],
+                    'categories': categories,
+                    'category_diversity': len(categories)
+                }
+                
+            except Exception as e:
+                print(f"키워드 '{keyword}' 점수 계산 오류: {e}")
+                continue
         
-        # 점수 기준 정렬
-        sorted_trends = sorted(trend_scores.items(), 
-                              key=lambda x: x[1]['score'], 
-                              reverse=True)
+        # 점수 기준으로 정렬
+        sorted_trends = sorted(trend_scores.values(), key=lambda x: x['score'], reverse=True)
         
-        return [{'keyword': k, **v} for k, v in sorted_trends]
+        return sorted_trends
     
     def _analyze_keyword_relationships(self, keyword_stats):
         """키워드 간 연관성 분석"""

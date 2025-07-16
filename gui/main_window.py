@@ -224,7 +224,7 @@ class MainWindow:
                 self.show_error("채널 분석 탭 로드 실패", str(e))
     
     def load_results_tab(self):
-        """결과 탭 로드 (지연로딩)"""
+        """결과 탭 로드 (지연로딩) - 중복 방지"""
         if self.results_viewer is None:
             try:
                 from .results_viewer import ResultsViewer
@@ -232,6 +232,8 @@ class MainWindow:
                 print("✅ 결과 뷰어 로드 완료")
             except Exception as e:
                 self.show_error("결과 뷰어 로드 실패", str(e))
+        else:
+            print("ℹ️ 결과 뷰어 이미 로드됨")
     
     def check_api_key(self):
         """API 키 확인"""
@@ -843,3 +845,22 @@ GitHub: 프로젝트 저장소 URL
         self.load_results_tab()
         if self.results_viewer:
             self.results_viewer.display_channel_analysis(channel_data)
+    
+    def show_search_results(self, videos_data, analysis_settings):
+        """검색 결과를 결과 탭에 표시"""
+        try:
+            # 결과 탭 로드
+            self.load_results_tab()
+            
+            # 결과 탭으로 전환
+            self.notebook.select(2)
+            
+            # 결과 표시
+            if self.results_viewer:
+                self.results_viewer.display_results(videos_data, analysis_settings)
+                self.update_status(f"검색 결과 {len(videos_data)}개 표시됨")
+            else:
+                self.show_error("결과 표시 실패", "결과 뷰어를 초기화할 수 없습니다.")
+                
+        except Exception as e:
+            self.show_error("결과 표시 오류", str(e))

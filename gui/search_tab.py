@@ -432,31 +432,47 @@ class SearchTab:
         self.update_progress(50, f"{len(videos)}개 영상 분석 중...")
         
         # 영상 분석
-        analyzed_videos = self.analyze_videos(videos, settings)
+        analyzed_videos = []
+        total_videos = len(videos)
+        
+        for i, video in enumerate(videos):
+            if not self.is_analyzing:  # 중지 버튼 체크
+                break
+            
+            try:
+                # 기본 분석 수행
+                analysis_result = self.analyze_single_video(video, i + 1)
+                video['analysis'] = analysis_result
+                analyzed_videos.append(video)
+                
+                # 진행률 업데이트
+                progress = 50 + (i / total_videos) * 40
+                self.update_progress(progress, f"분석 중... ({i+1}/{total_videos})")
+                
+            except Exception as e:
+                print(f"영상 분석 오류: {e}")
+                # 분석 실패해도 기본 데이터는 포함
+                video['analysis'] = {'rank': i+1, 'keywords': [], 'outlier_score': 0}
+                analyzed_videos.append(video)
         
         self.update_progress(90, "결과 정리 중...")
-        
-        # 분석 설정 저장
-        self.analysis_settings = {
-            'keyword': keyword,
-            'mode': 'keyword_search',
-            'mode_name': f"키워드 검색: '{keyword}'",
-            'region_name': self.get_region_name(settings['region_code']),
-            'video_type_name': self.get_video_type_name(settings['video_type']),
-            'period_days': settings['period_days'],
-            'min_views_name': self.format_number(settings.get('min_view_count', 0)),
-            'max_subscribers_name': self.format_number(settings.get('max_subscriber_count', 0)) if settings.get('max_subscriber_count') else "무제한",
-            'total_found': len(analyzed_videos),
-            'search_timestamp': datetime.now().isoformat()
-        }
         
         # 결과 저장
         self.current_videos = analyzed_videos
         
+        # 분석 설정 정보
+        analysis_settings = {
+            'mode_name': f'키워드 검색: {keyword}',
+            'search_keyword': keyword,
+            'search_timestamp': datetime.now().isoformat(),
+            'total_results': len(analyzed_videos),
+            'search_settings': settings
+        }
+        
         self.update_progress(100, f"완료! {len(analyzed_videos)}개 영상 분석 완료")
         
-        # UI 업데이트 (메인 스레드에서)
-        self.main_window.root.after(0, self.on_search_complete)
+        # 결과 표시 - 메인 윈도우의 결과 탭으로 전환하고 데이터 표시
+        self.main_window.root.after(100, lambda: self.show_results_in_viewer(analyzed_videos, analysis_settings))
     
     def analyze_videos(self, videos, settings):
         """영상 분석"""
@@ -945,12 +961,176 @@ class SearchTab:
         
         print(f"📊 진행률: {value:.1f}% - {message}")
 
-    def enable_search_ui(self):
-        """검색 UI 활성화"""
-        self.search_button.config(state='normal', text="🔍 검색 시작")
-        self.stop_button.config(state='disabled')
+    def set_analyzing_state(self, analyzing):
+        """
+        분석 상태 설정
         
-    def disable_search_ui(self):
-        """검색 UI 비활성화 (검색 중)"""
-        self.search_button.config(state='disabled', text="검색 중...")
-        self.stop_button.config(state='normal')
+        Args:
+            analyzing (bool): 분석 진행 여부
+        """
+        self.is_analyzing = analyzing
+        
+        if analyzing:
+            # 분석 시작 시 UI 상태
+            self.search_button.config(state='disabled', text="검색 중...")
+            self.stop_button.config(state='normal')
+            
+            # 키워드 입력 비활성화
+            if hasattr(self, 'keyword_entry'):
+                self.keyword_entry.config(state='disabled')
+            
+            # 내보내기 버튼 비활성화
+            if hasattr(self, 'excel_button'):
+                self.excel_button.config(state='disabled')
+            if hasattr(self, 'thumbnail_button'):
+                self.thumbnail_button.config(state='disabled')
+            
+        else:
+            # 분석 완료 시 UI 상태
+            self.search_button.config(state='normal', text="🔍 검색 시작")
+            self.stop_button.config(state='disabled')
+            
+            # 키워드 입력 활성화
+            if hasattr(self, 'keyword_entry'):
+                self.keyword_entry.config(state='normal')
+            
+            # 검색 결과가 있다면 내보내기 버튼 활성화
+            if hasattr(self, 'current_videos') and self.current_videos:
+                if hasattr(self, 'excel_button'):
+                    self.excel_button.config(state='normal')
+                if hasattr(self, 'thumbnail_button'):
+                    self.thumbnail_button.config(state='normal')
+
+    def stop_search(self):
+        """검색 중지"""
+        if self.is_analyzing:
+            self.is_analyzing = False
+            self.set_analyzing_state(False)
+            self.update_progress(0, "검색이 중지되었습니다.")
+            print("🛑 사용자에 의해 검색이 중지되었습니다.")
+
+    def handle_search_error(self, error):
+        """검색 오류 처리"""
+        error_msg = str(error)
+        print(f"❌ 검색 오류: {error_msg}")
+        
+        # 사용자 친화적 오류 메시지
+        if "API" in error_msg:
+            user_msg = "YouTube API 연결에 문제가 있습니다. API 키를 확인해주세요."
+        elif "quota" in error_msg.lower():
+            user_msg = "API 할당량이 초과되었습니다. 잠시 후 다시 시도해주세요."
+        elif "연결" in error_msg:
+            user_msg = "인터넷 연결을 확인해주세요."
+        else:
+            user_msg = f"검색 중 오류가 발생했습니다: {error_msg}"
+        
+        messagebox.showerror("검색 오류", user_msg)
+        self.update_progress(0, "오류 발생")
+
+    def show_results_in_viewer(self, videos_data, analysis_settings):
+        """결과 뷰어에 결과 표시"""
+        try:
+            # 결과 탭 로드 (아직 로드되지 않은 경우)
+            self.main_window.load_results_tab()
+            
+            # 결과 탭으로 전환
+            self.main_window.notebook.select(2)  # 세 번째 탭 (결과 보기)
+            
+            # 결과 표시
+            if self.main_window.results_viewer:
+                self.main_window.results_viewer.display_results(videos_data, analysis_settings)
+            else:
+                print("❌ 결과 뷰어를 찾을 수 없습니다.")
+                
+        except Exception as e:
+            print(f"결과 표시 오류: {e}")
+    
+    def analyze_single_video(self, video, rank):
+        """개별 영상 분석"""
+        try:
+            snippet = video['snippet']
+            statistics = video['statistics']
+            
+            # 기본 정보 추출
+            title = snippet.get('title', '')
+            views = int(statistics.get('viewCount', 0))
+            likes = int(statistics.get('likeCount', 0))
+            comments = int(statistics.get('commentCount', 0))
+            
+            # 간단한 키워드 추출
+            keywords = []
+            if title:
+                # 특수문자 제거 후 단어 분리
+                import re
+                clean_title = re.sub(r'[^\w\s가-힣]', ' ', title)
+                words = [word for word in clean_title.split() if len(word) >= 2]
+                keywords = words[:5]  # 상위 5개 단어
+            
+            # 참여도 계산
+            engagement_score = 0
+            if views > 0:
+                engagement_score = ((likes + comments) / views) * 100
+            
+            # 아웃라이어 점수 (간단한 계산)
+            outlier_score = 0
+            if views > 0:
+                # 평균 대비 얼마나 높은지 계산 (임시 공식)
+                outlier_score = min(views / 10000, 10.0)  # 최대 10점
+            
+            # 영상 타입 추정
+            video_type = "일반"
+            duration = snippet.get('duration', '')
+            if duration and 'PT' in duration:
+                # ISO 8601 duration 파싱 (간단버전)
+                if 'M' in duration:
+                    minutes = int(duration.split('PT')[1].split('M')[0]) if duration.split('PT')[1].split('M')[0].isdigit() else 0
+                    if minutes <= 1:
+                        video_type = "Shorts"
+                    elif minutes <= 10:
+                        video_type = "숏폼"
+                    else:
+                        video_type = "롱폼"
+            
+            return {
+                'rank': rank,
+                'keywords': keywords,
+                'engagement_score': round(engagement_score, 2),
+                'outlier_score': round(outlier_score, 2),
+                'video_type': video_type,
+                'formatted_duration': self.format_duration(duration),
+                'analysis_timestamp': datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            print(f"영상 분석 오류: {e}")
+            return {
+                'rank': rank,
+                'keywords': [],
+                'engagement_score': 0,
+                'outlier_score': 0,
+                'video_type': '알수없음',
+                'formatted_duration': '00:00'
+            }
+
+    def format_duration(self, duration):
+        """ISO 8601 duration을 mm:ss 형식으로 변환"""
+        try:
+            if not duration or 'PT' not in duration:
+                return '00:00'
+            
+            # PT1M23S -> 1:23
+            duration = duration.replace('PT', '')
+            minutes = 0
+            seconds = 0
+            
+            if 'M' in duration:
+                minutes = int(duration.split('M')[0])
+                duration = duration.split('M')[1] if 'M' in duration else duration
+            
+            if 'S' in duration:
+                seconds = int(duration.replace('S', ''))
+            
+            return f"{minutes:02d}:{seconds:02d}"
+            
+        except:
+            return '00:00'

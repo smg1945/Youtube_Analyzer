@@ -65,17 +65,30 @@ class TextAnalyzer:
             # 명사와 형용사만 추출
             morphs = self.okt.pos(text, stem=True)
             keywords = [word for word, pos in morphs 
-                       if pos in ['Noun', 'Adjective'] and len(word) > 1]
+                    if pos in ['Noun', 'Adjective'] and len(word) > 1]
             
-            # 불용어 제거
-            keywords = [word for word in keywords if word not in self.stopwords['ko']]
+            # 불용어 제거 - self.stopwords['ko']가 set이므로 안전하게 처리
+            if isinstance(self.stopwords.get('ko'), set):
+                filtered_keywords = [word for word in keywords if word not in self.stopwords['ko']]
+            else:
+                # fallback: 기본 불용어 리스트 사용
+                basic_stopwords = {'것', '수', '내', '거', '때문', '위해', '통해', '따라', '대해', '에서', '으로', '에게'}
+                filtered_keywords = [word for word in keywords if word not in basic_stopwords]
             
             # 빈도수 기준으로 정렬
-            keyword_counts = Counter(keywords)
-            return [keyword for keyword, _ in keyword_counts.most_common(max_keywords)]
+            keyword_counts = Counter(filtered_keywords)
+            
+            # Counter.most_common()은 [(keyword, count), ...] 형태의 리스트를 반환
+            most_common_items = keyword_counts.most_common(max_keywords)
+            
+            # 키워드만 추출 (count는 제외)
+            result_keywords = [keyword for keyword, count in most_common_items]
+            
+            return result_keywords
             
         except Exception as e:
             print(f"한국어 키워드 추출 오류: {e}")
+            # 오류 발생 시 영어 키워드 추출 방식으로 fallback
             return self._extract_english_keywords(text, max_keywords)
     
     def _extract_english_keywords(self, text, max_keywords):
