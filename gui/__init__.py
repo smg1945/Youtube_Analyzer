@@ -6,12 +6,14 @@ GUI 모듈의 진입점
 from .main_window import MainWindow
 from .search_tab import SearchTab
 from .results_viewer import ResultsViewer
+from .channel_detail_window import ChannelDetailWindow
 
 __version__ = "3.0.0"
 __all__ = [
     'MainWindow',
     'SearchTab', 
-    'ResultsViewer'
+    'ResultsViewer',
+    'ChannelDetailWindow'
 ]
 
 # 편의 함수들

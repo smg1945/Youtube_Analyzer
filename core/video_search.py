@@ -4,6 +4,7 @@ YouTube 영상 검색 전용 모듈
 """
 
 import time
+import re
 from datetime import datetime, timedelta
 from googleapiclient.errors import HttpError
 import config
@@ -72,62 +73,57 @@ class VideoSearcher:
             return videos
             
         except Exception as e:
-            print(f"❌ 영상 검색 오류: {e}")
+            print(f"❌ 검색 오류: {e}")
             return []
     
     def _execute_search(self, keyword, region_code, published_after, order, max_results):
-        """검색 실행"""
-        all_video_ids = []
-        
-        # 여러 번 검색해서 더 많은 결과 수집
-        search_iterations = 3
-        
-        for iteration in range(search_iterations):
-            try:
-                # 검색 쿼리 다양화
-                search_query = self._build_search_query(keyword, iteration)
-                
-                search_request = self.client.youtube.search().list(
-                    part='snippet',
-                    q=search_query,
+        """실제 검색 실행"""
+        try:
+            video_ids = []
+            page_token = None
+            batch_size = 50  # API 제한
+            
+            while len(video_ids) < max_results:
+                request = self.client.youtube.search().list(
+                    part='id',
+                    q=keyword,
                     type='video',
-                    order=order,
-                    publishedAfter=published_after,
                     regionCode=region_code,
-                    maxResults=50,
-                    relevanceLanguage='ko' if region_code == 'KR' else 'en'
+                    publishedAfter=published_after,
+                    order=order,
+                    maxResults=min(batch_size, max_results - len(video_ids)),
+                    pageToken=page_token
                 )
-                search_response = search_request.execute()
+                
+                response = request.execute()
+                
+                # 영상 ID 추출
+                batch_ids = [item['id']['videoId'] for item in response.get('items', [])]
+                video_ids.extend(batch_ids)
+                
+                # 다음 페이지 토큰
+                page_token = response.get('nextPageToken')
+                if not page_token:
+                    break
+                
+                # API 할당량 업데이트
                 self.client.quota_used += 100
                 
-                batch_video_ids = [item['id']['videoId'] for item in search_response.get('items', [])]
-                all_video_ids.extend(batch_video_ids)
-                
-                print(f"   검색 배치 {iteration + 1}: {len(batch_video_ids)}개 영상 발견")
-                
-                # API 요청 제한 고려
-                time.sleep(0.2)
-                
-            except HttpError as e:
-                print(f"❌ 검색 배치 {iteration + 1} 오류: {e}")
-                if "quotaExceeded" in str(e):
-                    break
-                continue
-        
-        # 중복 제거
-        unique_video_ids = list(dict.fromkeys(all_video_ids))
-        return unique_video_ids[:max_results]
+                print(f"   검색 진행: {len(video_ids)}/{max_results}")
+            
+            return video_ids[:max_results]
+            
+        except HttpError as e:
+            if e.resp.status == 403:
+                print("❌ API 할당량 초과 또는 권한 오류")
+            else:
+                print(f"❌ API 오류: {e}")
+            return []
+        except Exception as e:
+            print(f"❌ 검색 실행 오류: {e}")
+            return []
     
-    def _build_search_query(self, keyword, iteration):
-        """검색 쿼리 구성"""
-        if iteration == 0:
-            return keyword
-        elif iteration == 1:
-            return f'"{keyword}"'  # 따옴표로 감싸기
-        else:
-            return keyword + " 2024"  # 연도 추가
-    
-    def filter_by_video_type(self, videos, video_type="all"):
+    def filter_by_video_type(self, videos, video_type):
         """
         영상 유형별 필터링
         
@@ -141,31 +137,39 @@ class VideoSearcher:
         if video_type == "all":
             return videos
         
+        print(f"🔧 영상 유형 필터링: {video_type}")
+        
         filtered_videos = []
         shorts_count = 0
         long_count = 0
         invalid_count = 0
         
-        print(f"🎬 영상 유형 필터링: {video_type}")
-        
         for video in videos:
             try:
-                duration_str = video['contentDetails']['duration']
-                duration_seconds = self.client.parse_duration(duration_str)
+                # contentDetails에서 duration 확인
+                duration = video.get('contentDetails', {}).get('duration', '')
                 
-                # 영상 유형 판별
+                if not duration:
+                    invalid_count += 1
+                    continue
+                
+                # 길이를 초 단위로 변환
+                duration_seconds = self._parse_duration_to_seconds(duration)
+                
+                # 유형 분류 (60초 기준)
                 is_shorts = duration_seconds <= config.SHORT_VIDEO_MAX_DURATION
-                is_long = duration_seconds > config.LONG_VIDEO_MIN_DURATION
                 
-                if video_type == "shorts" and is_shorts:
-                    filtered_videos.append(video)
+                if is_shorts:
                     shorts_count += 1
-                elif video_type == "long" and is_long:
-                    filtered_videos.append(video)
+                    if video_type == "shorts":
+                        filtered_videos.append(video)
+                else:
                     long_count += 1
-                    
+                    if video_type == "long":
+                        filtered_videos.append(video)
+                        
             except Exception as e:
-                print(f"⚠️ 영상 유형 판별 오류 (ID: {video.get('id', 'Unknown')}): {e}")
+                print(f"영상 유형 분류 오류: {e}")
                 invalid_count += 1
                 continue
         
@@ -306,6 +310,54 @@ class VideoSearcher:
         
         return videos[:filters.get('max_results', 200)]
     
+    def parse_duration(self, duration):
+        """YouTube 영상 길이 파싱 (PT1H2M3S -> 1:02:03)"""
+        if not duration:
+            return "00:00"
+        
+        try:
+            # PT1H2M3S 형태의 duration 파싱
+            pattern = r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
+            match = re.match(pattern, duration)
+            
+            if not match:
+                return "00:00"
+            
+            hours = int(match.group(1) or 0)
+            minutes = int(match.group(2) or 0)
+            seconds = int(match.group(3) or 0)
+            
+            if hours > 0:
+                return f"{hours}:{minutes:02d}:{seconds:02d}"
+            else:
+                return f"{minutes}:{seconds:02d}"
+                
+        except Exception as e:
+            print(f"영상 길이 파싱 오류: {e}")
+            return "00:00"
+    
+    def _parse_duration_to_seconds(self, duration):
+        """YouTube duration을 초 단위로 변환"""
+        if not duration:
+            return 0
+        
+        try:
+            pattern = r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
+            match = re.match(pattern, duration)
+            
+            if not match:
+                return 0
+            
+            hours = int(match.group(1) or 0)
+            minutes = int(match.group(2) or 0)
+            seconds = int(match.group(3) or 0)
+            
+            return hours * 3600 + minutes * 60 + seconds
+            
+        except Exception as e:
+            print(f"Duration 파싱 오류: {e}")
+            return 0
+    
     def _validate_search_parameters(self, keyword, region_code, period_days):
         """검색 파라미터 유효성 검사"""
         errors = []
@@ -370,170 +422,30 @@ class TrendingVideoSearcher(VideoSearcher):
             if not self.client.can_use_quota(1):
                 raise Exception("API 할당량이 부족합니다.")
             
-            print(f"🔥 {region_code} 트렌딩 영상 검색 시작...")
+            request = self.client.youtube.videos().list(
+                part='id,snippet,statistics,contentDetails',
+                chart='mostPopular',
+                regionCode=region_code,
+                maxResults=min(max_results, 50),
+                videoCategoryId=category_id
+            )
             
-            # 트렌딩 영상 요청 파라미터
-            request_params = {
-                'part': 'snippet,statistics,contentDetails',
-                'chart': 'mostPopular',
-                'regionCode': region_code,
-                'maxResults': min(max_results, 50)  # YouTube API 제한
-            }
+            response = request.execute()
+            videos = response.get('items', [])
             
-            # 카테고리 ID가 지정된 경우 추가
-            if category_id:
-                request_params['videoCategoryId'] = category_id
+            # 영상 길이 파싱 추가
+            for video in videos:
+                duration = video.get('contentDetails', {}).get('duration', '')
+                video['parsed_duration'] = self.parse_duration(duration)
             
-            videos = []
-            page_token = None
+            self.client.quota_used += 1
             
-            # 여러 페이지 처리 (최대 결과 수까지)
-            while len(videos) < max_results:
-                if page_token:
-                    request_params['pageToken'] = page_token
-                
-                try:
-                    # API 호출
-                    response = self.client.youtube.videos().list(**request_params).execute()
-                    
-                    # 할당량 사용량 기록
-                    self.client.update_quota_usage(1)
-                    
-                    # 비어있는 응답 처리
-                    if not response.get('items'):
-                        print("❌ 트렌딩 영상을 찾을 수 없습니다.")
-                        break
-                    
-                    # 영상 데이터 처리
-                    for item in response['items']:
-                        video_data = self._process_video_item(item)
-                        if video_data:
-                            videos.append(video_data)
-                    
-                    print(f"📊 {len(response['items'])}개 트렌딩 영상 수집 완료")
-                    
-                    # 다음 페이지 토큰 확인
-                    page_token = response.get('nextPageToken')
-                    if not page_token:
-                        break
-                        
-                except Exception as e:
-                    print(f"❌ 트렌딩 영상 API 오류: {e}")
-                    break
-            
-            # 결과 후처리
-            final_videos = videos[:max_results]
-            
-            if final_videos:
-                print(f"✅ 총 {len(final_videos)}개 트렌딩 영상 수집 완료")
-                
-                # 트렌딩 순위 추가
-                for i, video in enumerate(final_videos):
-                    video['trending_rank'] = i + 1
-                    video['trending_region'] = region_code
-                    video['category_id'] = category_id
-                    
-                # 카테고리별 통계
-                category_stats = {}
-                for video in final_videos:
-                    cat_id = video.get('category_id', 'Unknown')
-                    category_stats[cat_id] = category_stats.get(cat_id, 0) + 1
-                
-                print(f"📈 카테고리별 분포: {category_stats}")
-                
-            else:
-                print("❌ 트렌딩 영상을 찾을 수 없습니다.")
-                self._print_trending_suggestions(region_code, category_id)
-            
-            return final_videos
+            print(f"✅ 트렌딩 영상 {len(videos)}개 수집 완료")
+            return videos
             
         except Exception as e:
-            print(f"❌ 트렌딩 영상 검색 실패: {e}")
+            print(f"❌ 트렌딩 영상 수집 오류: {e}")
             return []
-
-    def _print_trending_suggestions(self, region_code, category_id):
-        """트렌딩 검색 실패 시 제안사항"""
-        print("💡 해결 방법:")
-        print(f"   1. 다른 지역 시도: {region_code} → US, JP, GB")
-        if category_id:
-            print(f"   2. 카테고리 제거: {category_id} → 전체")
-        print("   3. 잠시 후 다시 시도 (트렌딩 데이터 업데이트 대기)")
-        print("   4. API 할당량 확인")
-
-    def _process_video_item(self, item):
-        """개별 영상 아이템 처리"""
-        try:
-            snippet = item.get('snippet', {})
-            statistics = item.get('statistics', {})
-            content_details = item.get('contentDetails', {})
-            
-            # 기본 정보 추출
-            video_data = {
-                'id': item.get('id', ''),
-                'title': snippet.get('title', ''),
-                'description': snippet.get('description', ''),
-                'channel_id': snippet.get('channelId', ''),
-                'channel_title': snippet.get('channelTitle', ''),
-                'published_at': snippet.get('publishedAt', ''),
-                'thumbnail_url': snippet.get('thumbnails', {}).get('medium', {}).get('url', ''),
-                'category_id': snippet.get('categoryId', ''),
-                'default_language': snippet.get('defaultLanguage', ''),
-                'live_broadcast_content': snippet.get('liveBroadcastContent', 'none')
-            }
-            
-            # 통계 정보 (안전한 변환)
-            video_data.update({
-                'view_count': self._safe_int(statistics.get('viewCount')),
-                'like_count': self._safe_int(statistics.get('likeCount')),
-                'comment_count': self._safe_int(statistics.get('commentCount')),
-                'duration': content_details.get('duration', 'PT0S'),
-                'dimension': content_details.get('dimension', '2d'),
-                'definition': content_details.get('definition', 'sd')
-            })
-            
-            # 지속시간을 초로 변환
-            video_data['duration_seconds'] = self._parse_duration(video_data['duration'])
-            
-            # 영상 유형 판단
-            video_data['video_type'] = self._determine_video_type(video_data['duration_seconds'])
-            
-            return video_data
-            
-        except Exception as e:
-            print(f"영상 아이템 처리 오류: {e}")
-            return None
-
-    def _safe_int(self, value, default=0):
-        """안전한 정수 변환"""
-        try:
-            return int(value) if value else default
-        except (ValueError, TypeError):
-            return default
-
-    def _parse_duration(self, duration_str):
-        """YouTube duration 파싱 (PT15M33S -> 933초)"""
-        import re
-        
-        pattern = r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
-        match = re.match(pattern, duration_str)
-        
-        if not match:
-            return 0
-        
-        hours = int(match.group(1) or 0)
-        minutes = int(match.group(2) or 0) 
-        seconds = int(match.group(3) or 0)
-        
-        return hours * 3600 + minutes * 60 + seconds
-
-    def _determine_video_type(self, duration_seconds):
-        """영상 유형 판단"""
-        if duration_seconds <= 60:
-            return 'shorts'
-        elif duration_seconds <= 600:  # 10분
-            return 'short_form'
-        else:
-            return 'long_form'
     
     def get_category_trending_videos(self, region_code="KR", max_results=200):
         """
@@ -546,59 +458,69 @@ class TrendingVideoSearcher(VideoSearcher):
         Returns:
             list: 카테고리별 트렌딩 영상 목록
         """
-        videos = []
+        all_videos = []
+        categories = ['10', '17', '19', '20', '22', '23', '24', '25', '26']  # 주요 카테고리
         
-        # 1. 인기 동영상 (mostPopular)
-        popular_videos = self.get_trending_videos(region_code, max_results=50)
-        videos.extend(popular_videos)
+        videos_per_category = max_results // len(categories)
         
-        # 2. 카테고리별 인기 동영상
-        categories = ['10', '20', '22', '23', '24']  # 음악, 게임, 사람/블로그, 코미디, 엔터
-        for category_id in categories:
+        for category in categories:
             try:
-                category_videos = self.get_trending_videos(region_code, category_id, 20)
-                videos.extend(category_videos)
-            except:
+                videos = self.get_trending_videos(
+                    region_code=region_code,
+                    category_id=category,
+                    max_results=videos_per_category
+                )
+                all_videos.extend(videos)
+                
+                if len(all_videos) >= max_results:
+                    break
+                    
+            except Exception as e:
+                print(f"카테고리 {category} 영상 수집 오류: {e}")
                 continue
         
-        # 3. 최근 24시간 내 업로드된 인기 영상
-        recent_videos = self._get_recent_popular_videos(region_code, 50)
-        videos.extend(recent_videos)
-        
-        # 중복 제거
-        unique_videos = []
-        seen_ids = set()
-        for video in videos:
-            video_id = video.get('id')
-            if video_id and video_id not in seen_ids:
-                unique_videos.append(video)
-                seen_ids.add(video_id)
-        
-        return unique_videos[:max_results]
+        return all_videos[:max_results]
+
+
+# YouTubeClient 클래스에 추가할 메서드
+class YouTubeClientExtension:
+    """YouTube 클라이언트 확장 메서드들"""
     
-    def _get_recent_popular_videos(self, region_code, max_results):
-        """최근 인기 영상 가져오기"""
-        try:
-            published_after = (datetime.now() - timedelta(days=1)).isoformat() + 'Z'
-            
-            search_request = self.client.youtube.search().list(
-                part='snippet',
-                type='video',
-                order='viewCount',
-                publishedAfter=published_after,
-                regionCode=region_code,
-                maxResults=max_results
-            )
-            search_response = search_request.execute()
-            self.client.quota_used += 100
-            
-            # 검색 결과의 상세 정보 가져오기
-            video_ids = [item['id']['videoId'] for item in search_response.get('items', [])]
-            if video_ids:
-                return self.client.get_video_details(video_ids)
-            
+    def get_video_details(self, video_ids):
+        """영상 상세 정보 가져오기 - 길이 정보 포함"""
+        if not video_ids:
             return []
+        
+        try:
+            all_videos = []
+            batch_size = 50  # YouTube API 제한
+            
+            for i in range(0, len(video_ids), batch_size):
+                batch_ids = video_ids[i:i + batch_size]
+                
+                request = self.youtube.videos().list(
+                    part='id,snippet,statistics,contentDetails',  # contentDetails 추가
+                    id=','.join(batch_ids)
+                )
+                response = request.execute()
+                
+                # 영상 정보 처리
+                for video in response.get('items', []):
+                    # 영상 길이 파싱
+                    duration = video.get('contentDetails', {}).get('duration', '')
+                    video['parsed_duration'] = self.parse_duration(duration)
+                    
+                    all_videos.append(video)
+                
+                self.quota_used += 1
+                
+            return all_videos
             
         except Exception as e:
-            print(f"최근 인기 영상 가져오기 오류: {e}")
+            print(f"영상 상세 정보 가져오기 오류: {e}")
             return []
+    
+    def parse_duration(self, duration):
+        """YouTube 영상 길이 파싱"""
+        searcher = VideoSearcher(self)
+        return searcher.parse_duration(duration)
